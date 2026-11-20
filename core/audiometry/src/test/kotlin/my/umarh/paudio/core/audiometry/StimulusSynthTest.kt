@@ -19,7 +19,7 @@ class StimulusSynthTest {
         val g = Golden.load("stimulus_synthesis")
         val tolSamples = g.getValue("tolerance").jsonObject.getValue("samples").dbl()
         val tolDb = g.getValue("tolerance").jsonObject.getValue("statsDb").dbl()
-        assertThat(g.cases()).isNotEmpty()
+        assertThat(g.cases().size).isEqualTo(6)
         for (c in g.cases()) {
             val o = c.jsonObject
             val name = o.getValue("name").str()

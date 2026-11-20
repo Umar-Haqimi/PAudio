@@ -2,6 +2,7 @@ package my.umarh.paudio.core.audiometry
 
 import my.umarh.paudio.core.model.Ear
 import my.umarh.paudio.core.model.FrequencyGrid
+import my.umarh.paudio.core.model.TrialJson
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -50,6 +51,9 @@ data class RunResult(
     /** descending → confirmed + 1 dB, ascending → confirmed (clamped to [L_min, L_max]). */
     val thresholdDbfs: Double,
     val isRepeat: Boolean,
+    /** Dial level at the start of the run and the run's random dial offset (for the audit log). */
+    val startLevelDbfs: Double = Double.NaN,
+    val positionOffset: Int = 0,
     /** Dial reached L_max and the listener still could not hear (censored point). */
     val censored: Boolean = false,
     /** Dial reached L_min and the listener still heard it. */
@@ -65,9 +69,11 @@ data class RunResult(
  * start at `L_exp + U(15, 25)`, ascending runs at `L_exp − U(15, 25)` (clamped into [L_min, L_max]).
  *
  * Per point: descending threshold = confirmed + 1 dB, ascending threshold = confirmed; point = mean. If
- * |desc − asc| > 15 dB the pair is repeated once (the two repeat runs are queued immediately next); the final
- * point = mean of all four run thresholds, and it is low-confidence if the repeated pair still differs by
- * more than 15 dB. A censored/floor report ends the point immediately (remaining runs for it are dropped).
+ * |desc − asc| > 15 dB the pair is repeated once. If the repeat pair agrees (≤ 15 dB) the point = mean of the
+ * REPEAT pair; otherwise point = mean of all four runs and it is low-confidence. Repeat runs are scheduled so
+ * the ears keep alternating: the remaining runs are re-interleaved per ear (rep-desc, rep-asc first in their
+ * ear's list), so rep-desc comes after the other ear's next run and rep-asc after the one after that. Only at
+ * the very end of the test, when one ear has no runs left, can two runs of the same ear be adjacent. A censored/floor report ends the point immediately (remaining runs for it are dropped).
  *
  * Usage: `val run = engine.nextRun() ?: done; ... engine.confirm(position)` or `engine.reportLimit(position)`.
  */
@@ -132,7 +138,10 @@ class ThoroughTestEngine(
             RunKind.DESCENDING -> min(run.lMax, confirmed + 1.0)
             RunKind.ASCENDING -> confirmed
         }
-        record(run, RunResult(run.ear, run.freqHz, run.kind, confirmed, thr, run.isRepeat))
+        record(
+            run,
+            RunResult(run.ear, run.freqHz, run.kind, confirmed, thr, run.isRepeat, run.startLevelDbfs, run.positionOffset),
+        )
     }
 
     /**
@@ -147,9 +156,15 @@ class ThoroughTestEngine(
         val atMin = level <= run.lMin + 1e-9
         require(atMax || atMin) { "dial is not at a limit" }
         val rr = if (atMax) {
-            RunResult(run.ear, run.freqHz, run.kind, run.lMax, run.lMax, run.isRepeat, censored = true)
+            RunResult(
+                run.ear, run.freqHz, run.kind, run.lMax, run.lMax, run.isRepeat, run.startLevelDbfs,
+                run.positionOffset, censored = true,
+            )
         } else {
-            RunResult(run.ear, run.freqHz, run.kind, run.lMin, run.lMin, run.isRepeat, atFloor = true)
+            RunResult(
+                run.ear, run.freqHz, run.kind, run.lMin, run.lMin, run.isRepeat, run.startLevelDbfs,
+                run.positionOffset, atFloor = true,
+            )
         }
         record(run, rr)
     }
@@ -170,6 +185,9 @@ class ThoroughTestEngine(
         if (rr.censored || rr.atFloor) {
             // Hard-limit outcome ends the point; drop its remaining runs.
             queue.removeAll { it.key == key }
+            val rest = queue.toList()
+            queue.clear()
+            queue.addAll(interleave(run.ear, emptyList(), rest))
             finished[key] = PointResult(
                 key.ear, key.freqHz, rr.thresholdDbfs, censored = rr.censored, lowConfidence = false,
                 trials = runs.size, atFloor = rr.atFloor,
@@ -182,16 +200,58 @@ class ThoroughTestEngine(
             val diff = kotlin.math.abs(last2[0].thresholdDbfs - last2[1].thresholdDbfs)
             if (diff > MAX_PAIR_DIFF_DB && key !in repeatedPoints) {
                 repeatedPoints += key
-                queue.addFirst(Planned(key, RunKind.ASCENDING, true))
-                queue.addFirst(Planned(key, RunKind.DESCENDING, true))
+                val rest = queue.toList()
+                queue.clear()
+                queue.addAll(interleave(run.ear, listOf(Planned(key, RunKind.DESCENDING, true), Planned(key, RunKind.ASCENDING, true)), rest))
             } else {
+                val value = if (key in repeatedPoints && diff <= MAX_PAIR_DIFF_DB) {
+                    last2.map { it.thresholdDbfs }.average()
+                } else {
+                    runs.map { it.thresholdDbfs }.average()
+                }
                 finished[key] = PointResult(
-                    key.ear, key.freqHz, runs.map { it.thresholdDbfs }.average(),
-                    censored = false, lowConfidence = diff > MAX_PAIR_DIFF_DB, trials = runs.size,
+                    key.ear, key.freqHz, value, censored = false, lowConfidence = diff > MAX_PAIR_DIFF_DB,
+                    trials = runs.size,
                 )
             }
         }
     }
+
+    /** Re-sequence [rest] plus the [repeat] runs (placed first in their ear's order) so ears alternate. */
+    private fun interleave(lastEar: Ear, repeat: List<Planned>, rest: List<Planned>): List<Planned> {
+        val byEar = ears.associateWith { e -> ArrayDeque<Planned>() }
+        for (p in repeat) byEar.getValue(p.key.ear).addLast(p)
+        for (p in rest) byEar.getValue(p.key.ear).addLast(p)
+        val out = ArrayList<Planned>()
+        var want = lastEar.other
+        while (byEar.values.any { it.isNotEmpty() }) {
+            val d = byEar.getValue(want)
+            if (d.isNotEmpty()) {
+                out += d.removeFirst()
+                want = want.other
+            } else {
+                out += byEar.getValue(want.other).removeFirst() // tail: the other ear has no runs left
+            }
+        }
+        return out
+    }
+
+    /** Runs still to be presented for [ear], including the current one. */
+    fun remainingRunCount(ear: Ear): Int = queue.count { it.key.ear == ear }
+
+    /**
+     * Trial-style log for persistence (SPEC §5.6 `TrialJson`): contiguous `seq`, `levelDbfs` = the confirmed
+     * level, `response` = true for "can hear it now" (ASC) / false for "can't hear it anymore" (DESC),
+     * `run` = "DESC"/"ASC". [tMsOf] maps the 1-based run index to ms since test start (no clock here).
+     */
+    fun persistableTrials(tMsOf: (Int) -> Long = { 0L }): List<TrialJson> =
+        runLog.mapIndexed { i, r ->
+            TrialJson(
+                seq = i + 1, ear = r.ear, freqHz = r.freqHz, levelDbfs = r.confirmedLevelDbfs.toFloat(),
+                isCatch = false, response = r.kind == RunKind.ASCENDING,
+                run = if (r.kind == RunKind.ASCENDING) "ASC" else "DESC", tMs = tMsOf(i + 1),
+            )
+        }
 
     companion object {
         const val MAX_PAIR_DIFF_DB = 15.0

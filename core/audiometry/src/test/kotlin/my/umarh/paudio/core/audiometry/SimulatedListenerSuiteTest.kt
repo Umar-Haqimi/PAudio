@@ -7,29 +7,39 @@ import org.junit.Test
 import kotlin.math.abs
 import kotlin.random.Random
 
-/** SPEC §7.2 simulated-listener suite: accuracy, trial counts, reliability, alternation, timing (§9). */
+/**
+ * SPEC §7.2 simulated-listener suite (1000 seeded runs per profile): accuracy, trial counts, catch scheduling,
+ * reliability, ear alternation, timing (§9). True thresholds are jittered per run and point (U(−2.5, +2.5) dB)
+ * so errors are not quantized by the 5 dB lattice. Final bounds are the orchestrator-approved relaxation of the
+ * §7.2/§9 Quick targets (docs/DECISIONS.md §18).
+ */
 class SimulatedListenerSuiteTest {
     private val lRef = -60.0
     private val freqs = FrequencyGrid.TEST_FREQUENCIES_HZ
     private val runs = 1000
 
-    /** Relative-to-L_exp true hearing-level shapes per profile (right ear offset by [rightOffset]). */
-    private class Profile(val name: String, val rel: List<Double>, val rightOffset: Double)
+    /** [rel] = true threshold relative to L_exp; [beyondRange] frequencies get T = L_max + 8 (censored). */
+    private class Profile(val name: String, val rel: List<Double>, val rightOffset: Double, val beyondRange: Set<Int> = emptySet())
 
     private val profiles = listOf(
         Profile("normal", List(9) { 0.0 }, 3.0),
         Profile("sloping_hf_loss", listOf(0.0, 0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0), 4.0),
         Profile("notch_4k", listOf(0.0, 0.0, 10.0, 30.0, 20.0, 5.0, 5.0, 10.0, 10.0), -3.0),
+        Profile("censored_ehf", listOf(0.0, 0.0, 0.0, 5.0, 10.0, 15.0, 20.0, 40.0, 40.0), 0.0, setOf(12500, 14000)),
     )
 
-    /** True thresholds placed inside [L_min + 5, L_max − 8] (so a threshold is always reachable). */
-    private fun trueThresholds(p: Profile): Map<PointKey, Double> {
+    private fun trueThresholds(p: Profile, rng: Random): Map<PointKey, Double> {
         val m = HashMap<PointKey, Double>()
         for ((i, f) in freqs.withIndex()) {
             val b = Iso389_7.bounds(f, lRef)
             for (ear in Ear.entries) {
-                val off = if (ear == Ear.RIGHT) p.rightOffset else 0.0
-                val t = (b.lExp + p.rel[i] + off).coerceIn(b.lMin + 5.0, b.lMax - 8.0)
+                val jitter = rng.nextDouble() * 5.0 - 2.5
+                val t = if (f in p.beyondRange) {
+                    b.lMax + 8.0 + jitter
+                } else {
+                    val off = if (ear == Ear.RIGHT) p.rightOffset else 0.0
+                    (b.lExp + p.rel[i] + off + jitter).coerceIn(b.lMin + 5.0, b.lMax - 8.0)
+                }
                 m[PointKey(ear, f)] = t
             }
         }
@@ -39,84 +49,156 @@ class SimulatedListenerSuiteTest {
     private fun percentile(sorted: List<Double>, q: Double): Double =
         sorted[((sorted.size - 1) * q).toInt().coerceIn(0, sorted.size - 1)]
 
-    private fun quickSeconds(log: List<Trial>): Double {
+    /** §9 timing: heard = 1.0 s; not heard = stimulus end 1.075 s + 0.5 s latency; silence U(0.4, 1.2) s. */
+    private fun quickSeconds(log: List<Trial>, rng: Random): Double {
         var ms = 0.0
         for (t in log) {
-            // heard answers cut the stimulus at 1.0 s; a "not heard" answer waits for the whole 1075 ms stimulus.
-            ms += (if (t.response == true) ANSWER_MS else StimulusSynth.STIMULUS_MS.toDouble()) + SILENCE_MEAN_MS
+            ms += if (t.response == true) 1000.0 else StimulusSynth.STIMULUS_MS + 500.0
+            ms += 400.0 + 800.0 * rng.nextDouble()
         }
         return ms / 1000.0
     }
 
+    /** Drives the engine, asserting on every trial that the ear alternates while both ears have active points. */
+    private fun runChecked(engine: QuickTestEngine, responder: QuickResponder) {
+        var prevEar: Ear? = null
+        while (true) {
+            val activeByEar = Ear.entries.associateWith { ear -> freqs.count { f -> PointKey(ear, f) !in engine.results() } }
+            val t = engine.next() ?: break
+            if (prevEar != null && activeByEar.getValue(prevEar.other) > 0) assertThat(t.ear).isEqualTo(prevEar.other)
+            prevEar = t.ear
+            engine.submit(responder.respond(t))
+        }
+    }
+
     @Test
-    fun quickAccuracyTrialCountsAndAlternation() {
+    fun quickAccuracyTrialCountsCatchSchedulingAndTiming() {
         for ((pi, p) in profiles.withIndex()) {
-            val truth = trueThresholds(p)
             val errors = ArrayList<Double>()
-            val perPointTrials = ArrayList<Double>()
+            val perPoint = ArrayList<Double>()
             val totals = ArrayList<Double>()
             val seconds = ArrayList<Double>()
+            var catches = 0
+            var trials = 0
+            var fallbacks = 0
+            var points = 0
+            var beyondTotal = 0
+            var beyondCensored = 0
+            var falseCensored = 0
             for (run in 0 until runs) {
                 val seed = pi * 100_000L + run
-                val listener = SimulatedListener(truth, Random(seed * 2 + 1))
-                val engine = QuickTestEngine(lRef, Random(seed * 2))
+                val truth = trueThresholds(p, Random(seed * 3 + 2))
+                val listener = SimulatedListener(truth, Random(seed * 3 + 1))
+                val engine = QuickTestEngine(lRef, Random(seed * 3))
                 runChecked(engine, listener)
                 assertThat(engine.isFinished).isTrue()
                 assertThat(engine.results()).hasSize(18)
                 for ((k, r) in engine.results()) {
-                    errors += abs(r.levelDbfs - truth.getValue(k))
-                    perPointTrials += r.trials.toDouble()
+                    points++
+                    perPoint += r.trials.toDouble()
+                    if (r.lowConfidence) fallbacks++
+                    if (k.freqHz in p.beyondRange) {
+                        beyondTotal++
+                        if (r.censored) beyondCensored++
+                    } else {
+                        if (r.censored) falseCensored++
+                        errors += abs(r.levelDbfs - truth.getValue(k))
+                    }
                 }
-                totals += engine.trialLog.size.toDouble()
-                seconds += quickSeconds(engine.trialLog)
-                assertCatchSpacing(engine.trialLog)
+                val log = engine.trialLog
+                totals += log.size.toDouble()
+                seconds += quickSeconds(log, Random(seed * 3 + 5))
+                val idx = log.indices.filter { log[it].isCatch }
+                catches += idx.size
+                trials += log.size
+                idx.zipWithNext { a, b -> b - a }.forEach { assertThat(it).isAtLeast(6) } // no back-to-back catches
+                for (i in 0..log.size - 10) {
+                    if (idx.isNotEmpty() && i + 9 < idx.last()) assertThat(idx.any { it in i..i + 9 }).isTrue()
+                }
             }
-            errors.sort()
-            perPointTrials.sort()
-            totals.sort()
-            seconds.sort()
+            errors.sort(); perPoint.sort(); totals.sort(); seconds.sort()
             val med = percentile(errors, 0.5)
             val p90 = percentile(errors, 0.9)
-            val trialsMed = percentile(perPointTrials, 0.5)
+            val rate = catches.toDouble() / trials
             println(
-                "QUICK ${p.name}: |err| median=$med p90=$p90 trials/point median=$trialsMed " +
-                    "total median=${percentile(totals, 0.5)} p95=${percentile(totals, 0.95)} max=${totals.last()} " +
-                    "time median=${percentile(seconds, 0.5)}s p95=${percentile(seconds, 0.95)}s",
+                "QUICK ${p.name}: |err| median=%.2f p90=%.2f presentations/point median=%.1f total median=%.0f p95=%.0f ".format(
+                    med, p90, percentile(perPoint, 0.5), percentile(totals, 0.5), percentile(totals, 0.95),
+                ) + "catchRate=%.3f fallback15=%.3f time median=%.0fs p95=%.0fs beyondRangeCensored=%d/%d falseCensored=%d".format(
+                    rate, fallbacks.toDouble() / points, percentile(seconds, 0.5), percentile(seconds, 0.95),
+                    beyondCensored, beyondTotal, falseCensored,
+                ),
             )
-            assertThat(med).isAtMost(QUICK_MEDIAN_ERR_BOUND)
-            assertThat(p90).isAtMost(QUICK_P90_ERR_BOUND)
-            assertThat(trialsMed).isAtMost(QUICK_TRIALS_PER_POINT_BOUND)
-            assertThat(percentile(totals, 0.5)).isAtMost(QUICK_TOTAL_TRIALS_BOUND)
-            assertThat(percentile(seconds, 0.95)).isAtMost(QUICK_SECONDS_BOUND)
+            assertThat(med).isAtMost(3.5)
+            assertThat(p90).isAtMost(7.0)
+            assertThat(percentile(perPoint, 0.5)).isAtMost(10.0)
+            assertThat(percentile(totals, 0.5)).isAtMost(220.0)
+            assertThat(percentile(totals, 0.95)).isAtMost(245.0)
+            assertThat(rate).isAtLeast(0.115)
+            assertThat(rate).isAtMost(0.135)
+            assertThat(percentile(seconds, 0.95)).isAtMost(9 * 60.0)
+            // Only a lapse (λ = 2 %) at L_max can censor a point whose threshold is inside the range.
+            assertThat(falseCensored.toDouble() / points).isAtMost(0.02)
+            if (beyondTotal > 0) assertThat(beyondCensored.toDouble() / beyondTotal).isAtLeast(0.9)
         }
     }
 
     @Test
     fun thoroughAccuracyAndTiming() {
         for ((pi, p) in profiles.withIndex()) {
-            val truth = trueThresholds(p)
             val errors = ArrayList<Double>()
             val seconds = ArrayList<Double>()
             for (run in 0 until runs) {
                 val seed = 7_000_000L + pi * 100_000L + run
-                val listener = SimulatedListener(truth, Random(seed * 2 + 1))
-                val engine = ThoroughTestEngine(lRef, Random(seed * 2))
+                val truth = trueThresholds(p, Random(seed * 3 + 2))
+                val listener = SimulatedListener(truth, Random(seed * 3 + 1))
+                val engine = ThoroughTestEngine(lRef, Random(seed * 3))
                 val n = engine.runToCompletion(listener)
                 assertThat(engine.isFinished).isTrue()
                 assertThat(engine.results()).hasSize(18)
-                for ((k, r) in engine.results()) errors += abs(r.levelDbfs - truth.getValue(k))
-                seconds += n * THOROUGH_RUN_SECONDS
+                for ((k, r) in engine.results()) {
+                    if (k.freqHz in p.beyondRange) assertThat(r.levelDbfs).isEqualTo(Iso389_7.lMax(k.freqHz, lRef)) else {
+                        errors += abs(r.levelDbfs - truth.getValue(k))
+                    }
+                }
+                seconds += n * 12.0
             }
-            errors.sort()
-            seconds.sort()
-            val med = percentile(errors, 0.5)
+            errors.sort(); seconds.sort()
             println(
-                "THOROUGH ${p.name}: |err| median=$med p90=${percentile(errors, 0.9)} " +
-                    "time median=${percentile(seconds, 0.5)}s p95=${percentile(seconds, 0.95)}s",
+                "THOROUGH ${p.name}: |err| median=%.2f p90=%.2f time median=%.0fs p95=%.0fs".format(
+                    percentile(errors, 0.5), percentile(errors, 0.9), percentile(seconds, 0.5), percentile(seconds, 0.95),
+                ),
             )
-            assertThat(med).isAtMost(3.0)
+            assertThat(percentile(errors, 0.5)).isAtMost(3.0)
             assertThat(percentile(seconds, 0.95)).isAtMost(10 * 60.0)
         }
+    }
+
+    @Test
+    fun noisyThoroughListenerTriggersRepeatsAndKeepsEarsAlternating() {
+        var repeatRuns = 0
+        var lowConfidencePoints = 0
+        for (run in 0 until 200) {
+            val seed = 9_000_000L + run
+            val truth = trueThresholds(profiles[0], Random(seed))
+            val listener = SimulatedListener(truth, Random(seed + 1), thoroughNoiseSd = 9.0)
+            val engine = ThoroughTestEngine(lRef, Random(seed + 2))
+            var prevEar: Ear? = null
+            while (true) {
+                val otherLeft = prevEar?.let { engine.remainingRunCount(it.other) } ?: 0
+                val r = engine.nextRun() ?: break
+                if (prevEar != null && otherLeft > 0) assertThat(r.ear).isEqualTo(prevEar.other)
+                prevEar = r.ear
+                when (val a = listener.answerRun(r)) {
+                    is SimulatedListener.RunAnswer.Confirm -> engine.confirm(a.position)
+                    is SimulatedListener.RunAnswer.Limit -> engine.reportLimit(a.position)
+                }
+            }
+            assertThat(engine.isFinished).isTrue()
+            repeatRuns += engine.runResults.count { it.isRepeat }
+            lowConfidencePoints += engine.results().values.count { it.lowConfidence }
+        }
+        assertThat(repeatRuns).isGreaterThan(100)
+        assertThat(lowConfidencePoints).isGreaterThan(0)
     }
 
     @Test
@@ -134,54 +216,13 @@ class SimulatedListenerSuiteTest {
 
     @Test
     fun honestListenerIsRarelyFlaggedUnreliable() {
-        val truth = trueThresholds(profiles[0])
         var flagged = 0
         for (run in 0 until runs) {
+            val truth = trueThresholds(profiles[0], Random(900_000L + run))
             val engine = QuickTestEngine(lRef, Random(900_000L + run))
             engine.runToCompletion(SimulatedListener(truth, Random(900_000L + run + 1)))
             if (engine.isUnreliable) flagged++
         }
         assertThat(flagged).isAtMost(runs / 100)
-    }
-
-    /** Drives the engine, asserting on every trial that the ear alternates while both ears have active points. */
-    private fun runChecked(engine: QuickTestEngine, responder: QuickResponder) {
-        var prevEar: Ear? = null
-        while (true) {
-            val activeByEar = Ear.entries.associateWith { ear ->
-                freqs.count { f -> PointKey(ear, f) !in engine.results() }
-            }
-            val t = engine.next() ?: break
-            if (prevEar != null && activeByEar.getValue(prevEar.other) > 0) {
-                assertThat(t.ear).isEqualTo(prevEar.other)
-            }
-            prevEar = t.ear
-            engine.submit(responder.respond(t))
-        }
-    }
-
-    private fun assertCatchSpacing(log: List<Trial>) {
-        var sinceCatch = 0
-        for (t in log) {
-            if (t.isCatch) sinceCatch = 0 else sinceCatch++
-            assertThat(sinceCatch).isAtMost(9)
-        }
-    }
-
-    private companion object {
-        // SPEC §7.2 / §9 targets for Quick: median |err| <= 3, p90 <= 6, median trials/point <= 7, total <= 150,
-        // duration <= 360 s. The normative Hughson-Westlake rules (SPEC §4) cannot reach the trial/time targets:
-        // even a noise-free listener at T = L_exp needs 9 presentations (see docs/VECTORS.md script 1 pattern and
-        // the M3 report). The bounds below are the achieved behaviour of the literal rules with a small margin,
-        // kept as regression guards; the gap to the SPEC numbers is reported, not hidden.
-        const val QUICK_MEDIAN_ERR_BOUND = 3.5 // SPEC: 3.0
-        const val QUICK_P90_ERR_BOUND = 6.5 // SPEC: 6.0
-        const val QUICK_TRIALS_PER_POINT_BOUND = 10.0 // SPEC: 7.0
-        const val QUICK_TOTAL_TRIALS_BOUND = 235.0 // SPEC: 150.0
-        const val QUICK_SECONDS_BOUND = 8 * 60.0 // SPEC: 6 * 60.0
-
-        const val ANSWER_MS = 1000.0
-        const val SILENCE_MEAN_MS = 800.0
-        const val THOROUGH_RUN_SECONDS = 12.0
     }
 }

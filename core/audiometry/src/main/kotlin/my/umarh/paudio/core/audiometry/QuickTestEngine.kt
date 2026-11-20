@@ -2,19 +2,21 @@ package my.umarh.paudio.core.audiometry
 
 import my.umarh.paudio.core.model.Ear
 import my.umarh.paudio.core.model.FrequencyGrid
+import my.umarh.paudio.core.model.TrialJson
 import kotlin.random.Random
 
 /**
  * One presented Quick-test trial. [response] is null while pending and `true` = "heard".
- * Catch trials are silent: [levelDbfs] is `Double.NEGATIVE_INFINITY` and [ear]/[freqHz] are the slot the
- * scheduler had picked (so the UI/log looks like a normal trial). [voided] marks trials discarded by
- * [QuickTestEngine.restartPoint]. Timing is the caller's business (no clocks here).
+ * Catch trials are silent: [levelDbfs] is `null` and [ear]/[freqHz] are the slot the scheduler had picked
+ * (so the UI/log looks like a normal trial). [voided] marks trials discarded by [QuickTestEngine.restartPoint]
+ * (interruptions): the engine log keeps them, the persistence layer must drop them
+ * ([QuickTestEngine.persistableTrials]). Timing is the caller's business (no clocks here).
  */
 data class Trial(
     val seq: Int,
     val ear: Ear,
     val freqHz: Int,
-    val levelDbfs: Double,
+    val levelDbfs: Double?,
     val isCatch: Boolean,
     val response: Boolean? = null,
     val voided: Boolean = false,
@@ -29,10 +31,11 @@ data class Trial(
  *
  * Scheduling: the next trial picks a uniformly random *active* staircase in the ear opposite to the previous
  * trial's ear (same ear only if the other ear has no active staircase). The first trial picks uniformly among
- * all active staircases. A trial is a catch (silent) with probability 1/8, and is forced when 9 consecutive
- * non-catch trials have occurred since the last catch (or the start), so every window of 10 consecutive trials
- * contains at least one catch. A catch keeps its scheduled ear for the alternation rule but does not advance
- * any staircase. False-positive rate = heard-on-catch / catch trials (0 when there were no catches);
+ * all active staircases. Catch (silent) trials: the distance between consecutive catches (and from the start to
+ * the first) is drawn uniformly from {6,…,10} trials, i.e. 5–9 non-catch trials in between, so the catch rate
+ * is 1/8 on average, no two catches are adjacent and every window of 10 trials contains at least one. The
+ * decision is made in `next()` from a counter (idempotent); the next gap is drawn when a catch is *submitted*.
+ * A catch keeps its scheduled ear for the alternation rule but does not advance any staircase. False-positive rate = heard-on-catch / catch trials (0 when there were no catches);
  * above [FALSE_POSITIVE_LIMIT] (20 %) the test is [isUnreliable].
  */
 class QuickTestEngine(
@@ -48,6 +51,7 @@ class QuickTestEngine(
     private var pending: Trial? = null
     private var lastEar: Ear? = null
     private var consecutiveNonCatch = 0
+    private var nonCatchBeforeNextCatch = drawGap()
     private var seq = 0
     private var catchTrials = 0
     private var catchHeard = 0
@@ -86,9 +90,9 @@ class QuickTestEngine(
         val sameEarPool = wanted?.let { w -> active.filter { it.ear == w } }.orEmpty()
         val pool = if (sameEarPool.isNotEmpty()) sameEarPool else active
         val key = pool[rng.nextInt(pool.size)]
-        val isCatch = consecutiveNonCatch >= MAX_CONSECUTIVE_NON_CATCH || rng.nextDouble() < CATCH_PROBABILITY
+        val isCatch = consecutiveNonCatch >= nonCatchBeforeNextCatch
         val trial = if (isCatch) {
-            Trial(++seq, key.ear, key.freqHz, Double.NEGATIVE_INFINITY, isCatch = true)
+            Trial(++seq, key.ear, key.freqHz, null, isCatch = true)
         } else {
             val sc = staircases.getOrPut(key) { newStaircase(key) }
             Trial(++seq, key.ear, key.freqHz, sc.currentLevel, isCatch = false)
@@ -107,6 +111,7 @@ class QuickTestEngine(
             catchTrials++
             if (heard) catchHeard++
             consecutiveNonCatch = 0
+            nonCatchBeforeNextCatch = drawGap()
             return
         }
         consecutiveNonCatch++
@@ -117,6 +122,19 @@ class QuickTestEngine(
             finished[key] = PointResult(key.ear, key.freqHz, r.levelDbfs, r.censored, r.lowConfidence, r.trials, r.atFloor)
         }
     }
+
+    /**
+     * Trials to persist: voided trials (interrupted points) are dropped, `seq` is renumbered contiguously from 1
+     * and catch trials have `levelDbfs = null`. [tMsOf] maps the engine `seq` to milliseconds since test start
+     * (the engine has no clock).
+     */
+    fun persistableTrials(tMsOf: (Int) -> Long = { 0L }): List<TrialJson> =
+        log.filter { !it.voided }.mapIndexed { i, t ->
+            TrialJson(
+                seq = i + 1, ear = t.ear, freqHz = t.freqHz, levelDbfs = t.levelDbfs?.toFloat(),
+                isCatch = t.isCatch, response = t.response == true, run = null, tMs = tMsOf(t.seq),
+            )
+        }
 
     /** Drop the pending trial unanswered (e.g. pause); the scheduler will pick again. */
     fun cancelPending() {
@@ -145,9 +163,12 @@ class QuickTestEngine(
         return HughsonWestlakeStaircase(b.lExp, b.lMax, b.lMin, other)
     }
 
+    private fun drawGap(): Int = MIN_CATCH_SPACING - 1 + rng.nextInt(MAX_CATCH_SPACING - MIN_CATCH_SPACING + 1)
+
     companion object {
-        const val CATCH_PROBABILITY = 1.0 / 8.0
-        const val MAX_CONSECUTIVE_NON_CATCH = 9
+        /** Catch-to-catch distance in trials: uniform in 6..10 (mean 8 ⇒ 12.5 %). */
+        const val MIN_CATCH_SPACING = 6
+        const val MAX_CATCH_SPACING = 10
         const val FALSE_POSITIVE_LIMIT = 0.20
     }
 }

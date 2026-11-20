@@ -27,10 +27,10 @@ class QuickEngineTest {
                 assertThat(engine.next()).isSameInstanceAs(t)
                 if (!t.isCatch) {
                     val b = Iso389_7.bounds(t.freqHz, lRef)
-                    assertThat(t.levelDbfs).isAtMost(b.lMax + 1e-9)
-                    assertThat(t.levelDbfs).isAtLeast(b.lMin - 1e-9)
+                    assertThat(t.levelDbfs!!).isAtMost(b.lMax + 1e-9)
+                    assertThat(t.levelDbfs!!).isAtLeast(b.lMin - 1e-9)
                 } else {
-                    assertThat(t.levelDbfs).isEqualTo(Double.NEGATIVE_INFINITY)
+                    assertThat(t.levelDbfs).isNull()
                 }
                 engine.submit(listener.respond(t))
             }
@@ -41,50 +41,55 @@ class QuickEngineTest {
     }
 
     @Test
-    fun catchTrialsAreForcedAtLeastEveryTenTrialsAndRoughlyOneEighth() {
+    fun catchSchedulingSpacingRateAndIdempotence() {
         var totalTrials = 0
         var totalCatch = 0
-        for (seed in 0 until 100) {
+        for (seed in 0 until 200) {
             val engine = QuickTestEngine(lRef, Random(seed))
             engine.runToCompletion(SimulatedListener(truth(10.0), Random(seed + 1L)))
-            var since = 0
-            for (t in engine.trialLog) {
-                if (t.isCatch) since = 0 else since++
-                assertThat(since).isAtMost(9)
+            val idx = engine.trialLog.indices.filter { engine.trialLog[it].isCatch }
+            // First catch at trial 6..10 (1-based) unless the test is shorter; spacing 6..10 afterwards.
+            if (idx.isNotEmpty()) assertThat(idx.first() + 1).isIn(6..10)
+            idx.zipWithNext { a, b -> b - a }.forEach { assertThat(it).isIn(6..10) }
+            // every window of 10 consecutive trials has a catch (until the last catch)
+            for (i in 0..engine.trialLog.size - 10) {
+                if (idx.isNotEmpty() && i + 9 < idx.last()) assertThat(idx.any { it in i..i + 9 }).isTrue()
             }
             totalTrials += engine.trialLog.size
-            totalCatch += engine.trialLog.count { it.isCatch }
+            totalCatch += idx.size
         }
         val rate = totalCatch.toDouble() / totalTrials
-        // p = 1/8 per trial plus forced catches after 9 non-catch trials ⇒ expected rate ≈ 1/Σ(7/8)^k, k<10 ≈ 16.9 %.
-        assertThat(rate).isGreaterThan(0.15)
-        assertThat(rate).isLessThan(0.185)
+        assertThat(rate).isGreaterThan(0.115)
+        assertThat(rate).isLessThan(0.135)
     }
 
     @Test
-    fun catchIsForcedAfterNineNonCatchTrialsEvenIfProbabilityNeverFires() {
-        // A Random whose nextDouble is always 0.99 never triggers the 1/8 branch; the forcing rule must still fire.
-        val never = object : Random() {
-            private val inner = Random(3)
-            override fun nextBits(bitCount: Int): Int = inner.nextBits(bitCount)
-            override fun nextDouble(): Double = 0.99
+    fun persistableTrialsDropVoidedRenumberAndNullCatchLevels() {
+        val engine = QuickTestEngine(lRef, Random(21), frequencies = listOf(1000, 2000))
+        val listener = SimulatedListener(truth(), Random(22))
+        var restarted = false
+        while (true) {
+            val t = engine.next() ?: break
+            if (!restarted && !t.isCatch && engine.trialLog.count { !it.isCatch } >= 3) {
+                restarted = true
+                engine.restartPoint(t.ear, t.freqHz)
+                continue
+            }
+            engine.submit(listener.respond(t))
         }
-        val engine = QuickTestEngine(lRef, never)
-        val trials = ArrayList<Trial>()
-        repeat(30) {
-            val t = engine.next() ?: return@repeat
-            trials += t
-            engine.submit(false)
-        }
-        val catchIdx = trials.indices.filter { trials[it].isCatch }
-        assertThat(catchIdx.first()).isEqualTo(9) // the 10th trial
-        assertThat(catchIdx.zipWithNext { a, b -> b - a }.all { it == 10 }).isTrue()
+        val voided = engine.trialLog.count { it.voided }
+        assertThat(voided).isGreaterThan(0)
+        val p = engine.persistableTrials { it * 1000L }
+        assertThat(p).hasSize(engine.trialLog.size - voided)
+        assertThat(p.map { it.seq }).isEqualTo((1..p.size).toList())
+        assertThat(p.filter { it.isCatch }.all { it.levelDbfs == null }).isTrue()
+        assertThat(p.filter { !it.isCatch }.all { it.levelDbfs != null }).isTrue()
     }
 
     @Test
     fun falsePositiveRateAndUnreliableThreshold() {
         val engine = QuickTestEngine(lRef, Random(5))
-        // Answer catch trials "heard" in 3 of 10, others "not heard" → 30 % > 20 % unreliable; 2 of 10 → reliable.
+        // Answer catch trials "heard" in 3 of 10, others "heard" (keeps staircases alive) → 30 % > 20 % unreliable; 2 of 10 → reliable.
         var catches = 0
         while (catches < 10) {
             val t = checkNotNull(engine.next())
@@ -92,7 +97,7 @@ class QuickEngineTest {
                 engine.submit(catches < 2)
                 catches++
             } else {
-                engine.submit(false)
+                engine.submit(true)
             }
         }
         assertThat(engine.falsePositiveRate).isWithin(1e-12).of(0.2)
@@ -103,7 +108,7 @@ class QuickEngineTest {
                 engine.submit(true)
                 break
             }
-            engine.submit(false)
+            engine.submit(true)
         }
         assertThat(engine.isUnreliable).isTrue()
     }
@@ -180,6 +185,7 @@ class ThoroughEngineTest {
         var runs = 0
         var prevEar: Ear? = null
         while (true) {
+            val otherLeft = prevEar?.let { engine.remainingRunCount(it.other) } ?: 0
             val run = engine.nextRun() ?: break
             val b = Iso389_7.bounds(run.freqHz, lRef)
             assertThat(run.levelAt(run.initialPosition)).isEqualTo(run.startLevelDbfs)
@@ -198,7 +204,8 @@ class ThoroughEngineTest {
             assertThat(run.levelAt(run.minPosition)).isEqualTo(run.lMin)
             assertThat(run.levelAt(run.maxPosition)).isEqualTo(run.lMax)
             // Ear alternates between consecutive runs.
-            if (prevEar != null && !run.isRepeat) assertThat(run.ear).isEqualTo(prevEar.other)
+            // Ear alternates between consecutive runs (repeats included) while the other ear still has runs left.
+            if (prevEar != null && otherLeft > 0) assertThat(run.ear).isEqualTo(prevEar.other)
             prevEar = run.ear
             // Confirm at the start position (always valid).
             engine.confirm(run.initialPosition)
@@ -237,6 +244,7 @@ class ThoroughEngineTest {
             engine.confirm(run.positionOffset + Math.round(target - run.lMin).toInt())
         }
         assertThat(leftRuns).isEqualTo(4) // pair + one repeat, no more
+        assertThat(engine.runResults.count { it.isRepeat }).isAtLeast(2)
         val r = engine.results().getValue(PointKey(Ear.LEFT, 1000))
         assertThat(r.lowConfidence).isTrue()
         assertThat(r.trials).isEqualTo(4)
@@ -253,6 +261,13 @@ class ThoroughEngineTest {
         val r2 = e2.results().getValue(PointKey(Ear.LEFT, 1000))
         assertThat(n).isEqualTo(4)
         assertThat(r2.lowConfidence).isFalse()
+        // Agreeing repeat pair: point = mean of the REPEAT pair only (desc confirmed −20 +1, asc −20).
+        assertThat(r2.levelDbfs).isWithin(1e-9).of(b.lExp - 19.5)
+
+        // persistable thorough log: contiguous seq, DESC/ASC mapped to response false/true
+        val pl = e2.persistableTrials()
+        assertThat(pl.map { it.seq }).isEqualTo((1..pl.size).toList())
+        assertThat(pl.all { (it.run == "ASC") == it.response }).isTrue()
     }
 
     @Test

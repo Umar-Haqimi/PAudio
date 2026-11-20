@@ -37,7 +37,10 @@ object Calibration {
 
     fun lRefFromTap(tapLevelDbfs: Double): Double = tapLevelDbfs - REACTION_ALLOWANCE_DB
 
-    /** Starting STREAM_MUSIC index: round(0.5 × max). */
+    /**
+     * Starting STREAM_MUSIC index: round(0.5 × max), halves rounded UP (`roundToInt`: 12.5 → 13), unlike
+     * Python's banker's `round` (12.5 → 12). Any Python oracle must use `floor(x + 0.5)`.
+     */
     fun initialIndex(maxIndex: Int): Int = (0.5 * maxIndex).roundToInt()
 
     fun inTargetWindow(lRef: Double): Boolean = lRef in TARGET_MIN_DBFS..TARGET_MAX_DBFS
@@ -124,12 +127,35 @@ class CalibrationSession(
         private set
     var outcome: CalibrationOutcome? = null
         private set
+    private var lastRerunLowered = false
 
     /** Level to play [elapsedMs] after the current ramp began; null once exhausted. */
     fun rampLevelAtMs(elapsedMs: Long): Double? = Calibration.rampLevelAtMs(elapsedMs)
 
-    fun onRampExhausted(): CalibrationOutcome =
-        CalibrationOutcome.Aborted(CalibrationAbortReason.CANT_HEAR).also { outcome = it }
+    /**
+     * The ramp reached −10 dBFS without a tap. On the first run (or after a rerun that did not lower the volume)
+     * that is "can't hear anything". After a rerun that LOWERED the volume we caused it: L_ref is treated as
+     * ≥ [Calibration.CAP_DBFS] − 4 = −14 dBFS and, if reruns remain, the index is planned upward again.
+     */
+    fun onRampExhausted(): CalibrationOutcome {
+        val o: CalibrationOutcome = if (!lastRerunLowered) {
+            CalibrationOutcome.Aborted(CalibrationAbortReason.CANT_HEAR)
+        } else {
+            val lRef = Calibration.lRefFromTap(Calibration.CAP_DBFS)
+            val next = if (reruns < Calibration.MAX_RERUNS) {
+                Calibration.planIndexChange(currentIndex, minIndex, maxIndex, lRef, indexDb)
+            } else {
+                null
+            }
+            if (next != null) {
+                CalibrationOutcome.Rerun(next, lRef)
+            } else {
+                CalibrationOutcome.Aborted(CalibrationAbortReason.VOLUME_RANGE_UNSUITABLE, lRef)
+            }
+        }
+        outcome = o
+        return o
+    }
 
     fun onTap(tapLevelDbfs: Double): CalibrationOutcome {
         val lRef = Calibration.lRefFromTap(tapLevelDbfs)
@@ -149,7 +175,9 @@ class CalibrationSession(
     /** Call after applying a [CalibrationOutcome.Rerun]; [effectiveIndex] is the read-back volume index. */
     fun restart(effectiveIndex: Int) {
         check(outcome is CalibrationOutcome.Rerun) { "restart() only after a Rerun outcome" }
-        currentIndex = effectiveIndex.coerceIn(minIndex, maxIndex)
+        val newIndex = effectiveIndex.coerceIn(minIndex, maxIndex)
+        lastRerunLowered = newIndex < currentIndex
+        currentIndex = newIndex
         reruns++
         outcome = null
     }

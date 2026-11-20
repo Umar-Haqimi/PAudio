@@ -41,7 +41,7 @@ class SimulatedListener(
     }
 
     override fun respond(trial: Trial): Boolean =
-        if (trial.isCatch) rng.nextDouble() < gamma else rng.nextDouble() < pYes(trial.ear, trial.freqHz, trial.levelDbfs)
+        if (trial.isCatch) rng.nextDouble() < gamma else rng.nextDouble() < pYes(trial.ear, trial.freqHz, checkNotNull(trial.levelDbfs))
 
     /** Level at which p(yes) = 0.5 for the true threshold, plus N(0, [thoroughNoiseSd]) noise. */
     fun thoroughConfirmLevel(ear: Ear, freqHz: Int): Double {

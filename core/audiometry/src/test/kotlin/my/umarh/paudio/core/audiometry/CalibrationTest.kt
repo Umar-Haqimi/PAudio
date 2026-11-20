@@ -106,6 +106,30 @@ class CalibrationTest {
     }
 
     @Test
+    fun rampExhaustedAfterVolumeLoweringPlansRaise() {
+        val s = CalibrationSession(1, 15, curve)
+        val o1 = s.onTap(-72.0) // L_ref −76 → rerun at a lower index (2)
+        s.restart((o1 as CalibrationOutcome.Rerun).newIndex)
+        assertThat(s.currentIndex).isLessThan(8)
+        // Now the ramp runs out: we lowered the volume, so do not say "can't hear"; treat L_ref ≥ −14 and raise.
+        val o2 = s.onRampExhausted()
+        assertThat(o2).isInstanceOf(CalibrationOutcome.Rerun::class.java)
+        val r = o2 as CalibrationOutcome.Rerun
+        assertThat(r.lRefDbfs).isEqualTo(-14.0)
+        assertThat(r.newIndex).isGreaterThan(s.currentIndex)
+        // Reruns exhausted right after a lowering rerun: unsuitable range, not CANT_HEAR.
+        val s3 = CalibrationSession(1, 15, curve)
+        s3.restart((s3.onTap(-72.0) as CalibrationOutcome.Rerun).newIndex)
+        s3.restart((s3.onTap(-70.0) as CalibrationOutcome.Rerun).newIndex)
+        assertThat(s3.reruns).isEqualTo(Calibration.MAX_RERUNS)
+        assertThat(s3.onRampExhausted())
+            .isEqualTo(CalibrationOutcome.Aborted(CalibrationAbortReason.VOLUME_RANGE_UNSUITABLE, -14.0))
+        // First-run exhaustion is still CANT_HEAR.
+        assertThat(CalibrationSession(1, 15, curve).onRampExhausted())
+            .isEqualTo(CalibrationOutcome.Aborted(CalibrationAbortReason.CANT_HEAR))
+    }
+
+    @Test
     fun cantHearOutcome() {
         val s = CalibrationSession(1, 15, curve)
         assertThat(s.rampLevelAtMs(450L * 41)).isNull()
