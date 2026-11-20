@@ -1,6 +1,7 @@
 package my.umarh.paudio.core.model
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.time.Duration
 
@@ -77,10 +78,14 @@ interface EffectHandle {
     val control: StateFlow<Boolean>
 
     /**
-     * true when the read-back after the last full apply showed the HAL clamped/altered the band layout
-     * (DECISIONS §1 fallback ladder): the engine then moves down the ladder. Default: never.
+     * One event per read-back that showed the HAL clamped/altered the band layout (DECISIONS §1 fallback ladder),
+     * carrying the band count that was found clamped. The engine steps down the ladder at most once per band
+     * count. Default: never.
      */
-    val clamped: StateFlow<Boolean> get() = NeverClamped
+    val clamped: Flow<Int> get() = emptyFlow()
+
+    /** Non-null when the handle failed after creation (e.g. a ladder rebuild was refused). Default: never. */
+    val failed: StateFlow<EffectFailureKind?> get() = NeverFailed
 
     /** Idempotent. */
     fun release()
@@ -98,4 +103,4 @@ interface AbPlayer {
     fun release()
 }
 
-private val NeverClamped: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false)
+private val NeverFailed: StateFlow<EffectFailureKind?> = kotlinx.coroutines.flow.MutableStateFlow(null)

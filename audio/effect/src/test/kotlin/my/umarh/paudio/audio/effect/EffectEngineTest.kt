@@ -25,11 +25,15 @@ class EffectEngineTest {
         val session = FakeSessionSource()
         val legacy = FakeSessionSource()
         var music = false
+        var sourceFails = false
         val scope: CoroutineScope =
             CoroutineScope(testScope.backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScope.testScheduler))
         val engine = EffectEngine(
             backend,
-            { mode -> if (mode == EngineMode.SESSION) session else legacy },
+            { mode ->
+                if (sourceFails) error("no receiver")
+                if (mode == EngineMode.SESSION) session else legacy
+            },
             { music },
             scope,
             { testScope.testScheduler.currentTime },
@@ -83,16 +87,44 @@ class EffectEngineTest {
     }
 
     @Test
-    fun sixteenSessionCap() = runTest {
+    fun sixteenSessionCapEvictsLeastRecentlyOpened() = runTest {
         val r = Rig(this)
         r.start()
-        for (i in 1..20) r.session.open(i, "p$i")
-        assertThat(r.backend.handles).hasSize(16)
+        for (i in 1..16) r.session.open(i, "p$i")
+        assertThat(r.backend.handles.filter { !it.released }).hasSize(16)
+        advanceTimeBy(1_000)
+        r.session.open(1, "p1") // refresh 1: session 2 is now the least recently opened
+        r.session.open(17, "p17")
         assertThat(r.engine.diagnostics.value.liveSessions).isEqualTo(16)
-        assertThat(r.engine.diagnostics.value.sessionsIgnoredOverCap).isEqualTo(4)
-        r.session.close(1, "p1")
-        r.session.open(21, "p21")
-        assertThat(r.engine.diagnostics.value.liveSessions).isEqualTo(16)
+        assertThat(r.engine.diagnostics.value.sessionsEvicted).isEqualTo(1)
+        assertThat(r.backend.handles.single { it.session == 2 }.released).isTrue()
+        assertThat(r.backend.handles.single { it.session == 1 }.released).isFalse()
+        // creation is rate limited (burst 16 per window): the 17th handle appears after the window
+        assertThat(r.backend.handles.any { it.session == 17 }).isFalse()
+        advanceTimeBy(EffectEngine.CREATE_WINDOW_MS)
+        assertThat(r.backend.handles.single { it.session == 17 }.released).isFalse()
+        assertThat(r.backend.handles.filter { !it.released }).hasSize(16)
+    }
+
+    @Test
+    fun closeWithDifferentPackageIsIgnored() = runTest {
+        val r = Rig(this)
+        r.start()
+        r.session.open(5, "real.player")
+        r.session.close(5, "spoof")
+        assertThat(r.backend.handles.single().released).isFalse()
+        r.session.close(5, "real.player")
+        assertThat(r.backend.handles.single().released).isTrue()
+    }
+
+    @Test
+    fun activeAppsAreDistinct() = runTest {
+        val r = Rig(this)
+        r.start()
+        r.session.open(5, "a")
+        r.session.open(6, "a")
+        r.session.open(7, "b")
+        assertThat(r.engine.state.value).isEqualTo(EngineState.Active(listOf("a", "b")))
     }
 
     @Test
@@ -323,21 +355,124 @@ class EffectEngineTest {
     }
 
     @Test
-    fun ladderFallbackOnReadbackMismatch() = runTest {
+    fun ladderStepsOncePerBandCountEvenWithManyClampedHandles() = runTest {
+        val r = Rig(this)
+        r.start()
+        r.session.open(5, "p")
+        r.session.open(6, "q")
+        r.session.open(7, "x")
+        assertThat(r.engine.diagnostics.value.ladder).isEqualTo(DpLadderStep.MAIN)
+        r.backend.handles.forEach { it.emitClamped() }
+        assertThat(r.engine.diagnostics.value.ladder).isEqualTo(DpLadderStep.FB51) // not SPEC40
+        // service re-plans with a different layout; clamps again on the new layout
+        val fb = EqConfig.flat(bandCount = 20)
+        r.engine.setTarget(fb)
+        r.backend.handles.forEach { it.emitClamped(20) }
+        assertThat(r.engine.diagnostics.value.ladder).isEqualTo(DpLadderStep.SPEC40)
+        assertThat(r.engine.diagnostics.value.reducedPrecision).isTrue()
+        r.backend.handles.forEach { it.emitClamped(20) }
+        assertThat(r.engine.diagnostics.value.ladder).isEqualTo(DpLadderStep.SPEC40)
+    }
+
+    @Test
+    fun staleClampEventForOldLayoutIsIgnored() = runTest {
+        val r = Rig(this)
+        r.start()
+        r.session.open(5, "p")
+        r.engine.setTarget(EqConfig.flat(bandCount = 20))
+        r.backend.handles.single().emitClamped(40) // old layout
+        assertThat(r.engine.diagnostics.value.ladder).isEqualTo(DpLadderStep.MAIN)
+    }
+
+    @Test
+    fun p0_inheritedEnabledFlagNeverProcessesDuringBypass() = runTest {
+        val r = Rig(this)
+        r.backend.inheritedEnabled = true // AOSP: new controller inherits the previous controller's enabled flag
+        r.start()
+        val t = r.engine.acquire(BypassReason.CALIBRATION)
+        r.session.open(5, "p")
+        assertThat(r.backend.handles).hasSize(1)
+        assertThat(r.backend.enabledRequested).isEmpty()
+        r.engine.retry()
+        assertThat(r.backend.enabledRequested).isEmpty()
+        r.backend.handles.last().setControl(false)
+        r.backend.handles.last().setControl(true)
+        assertThat(r.backend.enabledRequested).isEmpty()
+        t.close()
+        assertThat(r.backend.enabledRequested).hasSize(1)
+    }
+
+    @Test
+    fun creationFailedClearedBySetModeSoLegacyCanBeTried() = runTest {
+        val r = Rig(this)
+        r.backend.failCreates = EffectFailureKind.CREATION_FAILED
+        r.start()
+        r.session.open(5, "p")
+        assertThat(r.engine.state.value).isEqualTo(EngineState.Error(EngineError.CREATION_FAILED))
+        r.backend.failCreates = null
+        r.engine.setMode(EngineMode.LEGACY)
+        r.legacy.open(0, LEGACY_PACKAGE)
+        assertThat(r.engine.state.value).isEqualTo(EngineState.Legacy(active = true))
+    }
+
+    @Test
+    fun creationFailedClearedByDeviceChange() = runTest {
+        val r = Rig(this)
+        r.backend.failCreates = EffectFailureKind.CREATION_FAILED
+        r.start()
+        r.session.open(5, "p")
+        r.backend.failCreates = null
+        r.engine.setRoute(FakeOutputDevices.BLUETOOTH_BUDS, r.cfg2)
+        assertThat(r.engine.state.value).isEqualTo(EngineState.Active(listOf("p")))
+    }
+
+    @Test
+    fun handleFailureKindsMapToErrorAndConflict() = runTest {
         val r = Rig(this)
         r.start()
         r.session.open(5, "p")
         val h = r.backend.handles.single()
-        assertThat(r.engine.diagnostics.value.ladder).isEqualTo(DpLadderStep.MAIN)
-        h.setClamped(true)
-        assertThat(r.engine.diagnostics.value.ladder).isEqualTo(DpLadderStep.FB51)
-        h.setClamped(false)
-        h.setClamped(true)
-        assertThat(r.engine.diagnostics.value.ladder).isEqualTo(DpLadderStep.SPEC40)
-        assertThat(r.engine.diagnostics.value.reducedPrecision).isTrue()
-        h.setClamped(false)
-        h.setClamped(true)
-        assertThat(r.engine.diagnostics.value.ladder).isEqualTo(DpLadderStep.SPEC40)
+        h.setFailed(EffectFailureKind.CONFLICT)
+        assertThat(r.engine.state.value).isEqualTo(EngineState.Conflict)
+        h.setFailed(EffectFailureKind.CREATION_FAILED)
+        assertThat(r.engine.state.value).isEqualTo(EngineState.Error(EngineError.CREATION_FAILED))
+    }
+
+    @Test
+    fun retryRestartsFailedSource() = runTest {
+        val r = Rig(this)
+        r.sourceFails = true
+        r.start()
+        assertThat(r.engine.state.value).isEqualTo(EngineState.Error(EngineError.SOURCE_FAILED))
+        r.sourceFails = false
+        r.engine.retry()
+        assertThat(r.engine.state.value).isEqualTo(EngineState.Waiting)
+        r.session.open(5, "p")
+        assertThat(r.engine.state.value).isEqualTo(EngineState.Active(listOf("p")))
+    }
+
+    @Test
+    fun setRouteIsAtomic() = runTest {
+        val r = Rig(this)
+        r.start()
+        r.session.open(5, "p")
+        r.engine.setRoute(FakeOutputDevices.BLUETOOTH_BUDS, r.cfg2)
+        // the old curve was never applied to the new route and vice versa: one config change only
+        assertThat(r.backend.handles.single().appliedConfigs).containsExactly(r.cfg, r.cfg2).inOrder()
+    }
+
+    @Test
+    fun noSessionHintSilentDuringBypassAndWithoutProfile() = runTest {
+        val r = Rig(this)
+        r.start()
+        r.music = true
+        val t = r.engine.acquire(BypassReason.HEARING_TEST)
+        advanceTimeBy(120_000)
+        assertThat(r.engine.noSessionHint.value).isFalse()
+        t.close()
+        r.engine.setTarget(null)
+        advanceTimeBy(120_000)
+        assertThat(r.engine.noSessionHint.value).isFalse()
     }
 
     @Test

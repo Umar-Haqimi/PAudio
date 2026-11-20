@@ -52,8 +52,9 @@ object EffectModule {
         backend = backend,
         sourceFactory = sources,
         musicActivity = music,
-        // Engine logic is lock-guarded; one background thread is plenty and keeps binder calls off main.
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        // ONE serial engine thread: every input and session event is processed there, so callers (main thread)
+        // never block on binder calls; EffectEngine's lock only serialises against synchronous bypass acquire().
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1)),
     )
 
     /** The same singleton engine is the P0 [BypassController]. */

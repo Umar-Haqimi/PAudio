@@ -1,5 +1,7 @@
 package my.umarh.paudio.testing
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import my.umarh.paudio.core.model.EffectBackend
@@ -28,13 +30,16 @@ class FakeEffectBackend : EffectBackend {
     val anyEnabled: Boolean get() = activeEnabled.isNotEmpty()
 
     /** When set, every [create] throws an [EffectCreationException] of this kind (until cleared). */
+    /** Simulates AOSP handing control over WITH the previous controller's enabled flag (new handles start enabled). */
+    @Volatile var inheritedEnabled: Boolean = false
+
     @Volatile var failCreates: EffectFailureKind? = null
     val createCalls: MutableList<Int> = CopyOnWriteArrayList()
 
     override fun create(session: Int, cfg: EqConfig): EffectHandle {
         createCalls += session
         failCreates?.let { throw EffectCreationException(it) }
-        return FakeEffectHandle(session, cfg).also { handles += it }
+        return FakeEffectHandle(session, cfg).also { if (inheritedEnabled) it.setEnabled(true); handles += it }
     }
 }
 
@@ -51,12 +56,19 @@ class FakeEffectHandle(val session: Int, initial: EqConfig) : EffectHandle {
     private val _control = MutableStateFlow(true)
     override val control: StateFlow<Boolean> = _control
 
-    private val _clamped = MutableStateFlow(false)
-    override val clamped: StateFlow<Boolean> = _clamped
+    private val _clamped = MutableSharedFlow<Int>(extraBufferCapacity = 16)
+    override val clamped: Flow<Int> = _clamped
 
-    /** Simulates a readback mismatch (HAL clamped the layout). */
-    fun setClamped(value: Boolean) {
-        _clamped.value = value
+    private val _failed = MutableStateFlow<EffectFailureKind?>(null)
+    override val failed: StateFlow<EffectFailureKind?> = _failed
+
+    /** Simulates a readback mismatch (HAL clamped the layout) for [bandCount] bands. */
+    fun emitClamped(bandCount: Int = config.bandCount) {
+        _clamped.tryEmit(bandCount)
+    }
+
+    fun setFailed(kind: EffectFailureKind?) {
+        _failed.value = kind
     }
 
     override fun apply(cfg: EqConfig) {

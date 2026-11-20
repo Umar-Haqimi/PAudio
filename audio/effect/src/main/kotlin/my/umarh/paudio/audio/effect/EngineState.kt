@@ -56,7 +56,7 @@ data class EngineDiagnostics(
     val ladder: DpLadderStep = DpLadderStep.MAIN,
     val bandCount: Int = 0,
     val liveSessions: Int = 0,
-    val sessionsIgnoredOverCap: Int = 0,
+    val sessionsEvicted: Int = 0,
     val sessionsReleasedIdle: Int = 0,
 ) {
     val reducedPrecision: Boolean get() = ladder == DpLadderStep.SPEC40

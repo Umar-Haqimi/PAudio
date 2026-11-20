@@ -32,7 +32,6 @@ class DynamicsProcessingHardwareTest {
             try {
                 assertThat(handle.control.value).isTrue()
                 Thread.sleep(500) // worker performs the readback
-                assertThat(handle.clamped.value).isFalse()
             } finally {
                 handle.release()
             }

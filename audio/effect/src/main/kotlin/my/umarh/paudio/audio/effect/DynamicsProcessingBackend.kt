@@ -1,6 +1,9 @@
 package my.umarh.paudio.audio.effect
 
+import android.media.audiofx.AudioEffect
 import android.util.Log
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import my.umarh.paudio.core.model.EffectBackend
@@ -29,9 +32,21 @@ internal const val READBACK_TOLERANCE = 0.05f
 
 private const val TAG = "PAudio.DP"
 
+/** True if the platform lists a DynamicsProcessing effect at all (DECISIONS §19: UOE without it is no "conflict"). */
+internal fun platformHasDynamicsProcessing(): Boolean = try {
+    AudioEffect.queryEffects()?.any { it.type == AudioEffect.EFFECT_TYPE_DYNAMICS_PROCESSING } ?: true
+} catch (_: Throwable) {
+    true // can't tell: assume present so the conflict path (retryable) is used
+}
+
 /**
  * DynamicsProcessing-backed [EffectBackend]. All band writes of all handles go through ONE dedicated worker
- * thread (never the caller's/main thread), with >= [MIN_WRITE_SPACING_MS] between write batches.
+ * thread (never the caller's/main thread), with >= [MIN_WRITE_SPACING_MS] between write batches, measured at
+ * execution time.
+ *
+ * Every created/rebuilt effect is explicitly set to the desired enabled state (default off) before it is handed
+ * out: AOSP gives a new controller the previous controller's enabled flag (DECISIONS §3), which would otherwise
+ * let our EQ process PAudio's own test audio during a bypass (SPEC §2.2 #1).
  *
  * Nothing sensitive is ever logged: no gains, curves, cutoffs or package names.
  */
@@ -40,55 +55,81 @@ class DynamicsProcessingBackend internal constructor(
     private val portFactory: DpPortFactory,
     private val minSpacingMs: Long,
     private val worker: ScheduledExecutorService,
+    private val dpAvailable: () -> Boolean,
 ) : EffectBackend {
 
-    @Inject constructor() : this(PlatformDpPortFactory, MIN_WRITE_SPACING_MS, newWorker())
+    @Inject constructor() : this(PlatformDpPortFactory, MIN_WRITE_SPACING_MS, newWorker(), ::platformHasDynamicsProcessing)
 
     private val lastBatchEndNanos = AtomicLong(0L)
 
     override fun create(session: Int, cfg: EqConfig): EffectHandle {
-        val port = createPort(session, cfg)
+        val port = createPort(session, cfg, enabled = false)
         return DpEffectHandle(session, cfg, port, this)
     }
 
-    /** First attempt as-is; any non-conflict failure retries once with 1 MBC passthrough band (DECISIONS §3). */
-    private fun createPort(session: Int, cfg: EqConfig): DpPort {
-        try {
-            return portFactory.create(EFFECT_PRIORITY, session, cfg, false)
+    /**
+     * First attempt as-is; a non-conflict failure retries once with 1 MBC passthrough band (DECISIONS §3).
+     * `UnsupportedOperationException` is a [EffectFailureKind.CONFLICT] only if the platform has a DP effect.
+     * The returned port has had `setEnabled([enabled])` applied.
+     */
+    internal fun createPort(session: Int, cfg: EqConfig, enabled: Boolean): DpPort {
+        val port = try {
+            portFactory.create(EFFECT_PRIORITY, session, cfg, false)
         } catch (e: UnsupportedOperationException) {
-            Log.w(TAG, "create refused: conflict (${e.javaClass.simpleName})")
-            throw EffectCreationException(EffectFailureKind.CONFLICT, cause = e)
+            throw uoeFailure(e)
         } catch (e: RuntimeException) {
             Log.w(TAG, "create failed (${e.javaClass.simpleName}); retrying with MBC passthrough")
+            try {
+                portFactory.create(EFFECT_PRIORITY, session, cfg, true)
+            } catch (e2: UnsupportedOperationException) {
+                throw uoeFailure(e2)
+            } catch (e2: RuntimeException) {
+                Log.w(TAG, "create failed after retry (${e2.javaClass.simpleName})")
+                throw EffectCreationException(EffectFailureKind.CREATION_FAILED, cause = e2)
+            }
         }
         try {
-            return portFactory.create(EFFECT_PRIORITY, session, cfg, true)
-        } catch (e: UnsupportedOperationException) {
-            throw EffectCreationException(EffectFailureKind.CONFLICT, cause = e)
+            port.setEnabled(enabled)
         } catch (e: RuntimeException) {
-            Log.w(TAG, "create failed after retry (${e.javaClass.simpleName})")
-            throw EffectCreationException(EffectFailureKind.CREATION_FAILED, cause = e)
+            runCatching { port.release() }
+            throw EffectCreationException(EffectFailureKind.CONFLICT, cause = e)
+        }
+        return port
+    }
+
+    private fun uoeFailure(e: UnsupportedOperationException): EffectCreationException {
+        val kind = if (dpAvailable()) EffectFailureKind.CONFLICT else EffectFailureKind.CREATION_FAILED
+        Log.w(TAG, "create refused: $kind (${e.javaClass.simpleName})")
+        return EffectCreationException(kind, cause = e)
+    }
+
+    /** Runs [task] on the worker, at least [minSpacingMs] after the previous batch ended (checked at execution). */
+    internal fun submit(task: () -> Unit) {
+        try {
+            worker.schedule({ runSpaced(task) }, 0, TimeUnit.MILLISECONDS)
+        } catch (_: RejectedExecutionException) {
+            // worker shut down: nothing to do
         }
     }
 
-    internal fun rebuild(session: Int, cfg: EqConfig): DpPort = createPort(session, cfg)
-
-    /** Schedules [task] on the worker no earlier than [minSpacingMs] after the previous batch ended. */
-    internal fun submit(task: () -> Unit) {
+    private fun runSpaced(task: () -> Unit) {
         val last = lastBatchEndNanos.get()
-        val delay = if (last == 0L) 0L else (minSpacingMs - (System.nanoTime() - last) / 1_000_000).coerceAtLeast(0)
-        try {
-            worker.schedule({
+        if (last != 0L) {
+            val wait = minSpacingMs - (System.nanoTime() - last) / 1_000_000
+            if (wait > 0) {
                 try {
-                    task()
-                } catch (e: Throwable) {
-                    Log.w(TAG, "worker task failed (${e.javaClass.simpleName})")
-                } finally {
-                    lastBatchEndNanos.set(System.nanoTime())
+                    worker.schedule({ runSpaced(task) }, wait, TimeUnit.MILLISECONDS)
+                } catch (_: RejectedExecutionException) {
                 }
-            }, delay, TimeUnit.MILLISECONDS)
-        } catch (_: RejectedExecutionException) {
-            // worker shut down: nothing to do
+                return
+            }
+        }
+        try {
+            task()
+        } catch (e: Throwable) {
+            Log.w(TAG, "worker task failed (${e.javaClass.simpleName})")
+        } finally {
+            lastBatchEndNanos.set(System.nanoTime())
         }
     }
 
@@ -101,7 +142,8 @@ class DynamicsProcessingBackend internal constructor(
 
 /**
  * One effect instance. `setEnabled` runs synchronously on the caller (P0 bypass must be effective when it
- * returns); `apply` is coalesced and written by the worker, diffing against what is already on the effect.
+ * returns) and never waits for a rebuild; `apply` is coalesced and written by the worker, diffing against what is
+ * already on the effect.
  */
 internal class DpEffectHandle(
     private val session: Int,
@@ -111,7 +153,11 @@ internal class DpEffectHandle(
 ) : EffectHandle {
 
     private val portLock = Any()
-    private var port: DpPort = initialPort
+
+    @Volatile private var port: DpPort = initialPort
+
+    /** True between releasing the old port and installing the rebuilt one; setEnabled only records intent then. */
+    private var rebuilding = false
     private val released = AtomicBoolean(false)
 
     // What is currently programmed on the effect (guarded by portLock).
@@ -127,8 +173,10 @@ internal class DpEffectHandle(
 
     private val _control = MutableStateFlow(true)
     override val control: StateFlow<Boolean> = _control
-    private val _clamped = MutableStateFlow(false)
-    override val clamped: StateFlow<Boolean> = _clamped
+    private val _clamped = MutableSharedFlow<Int>(extraBufferCapacity = 16)
+    override val clamped: Flow<Int> = _clamped
+    private val _failed = MutableStateFlow<EffectFailureKind?>(null)
+    override val failed: StateFlow<EffectFailureKind?> = _failed
 
     init {
         installListener(initialPort)
@@ -150,13 +198,21 @@ internal class DpEffectHandle(
         false
     }
 
+    private fun desired(): Boolean = synchronized(stateLock) { desiredEnabled }
+
     private fun onControlStatus(from: DpPort, granted: Boolean) {
         if (released.get() || from !== port) return
         if (granted) {
-            // Regained: whatever the other controller left is unknown; rewrite everything (DECISIONS §3).
+            // Regained: a new controller inherits the previous controller's enabled flag, so re-assert OUR desired
+            // state immediately (no window where a bypassed handle processes audio), then rewrite everything.
             val last = synchronized(portLock) {
+                if (from !== port || rebuilding) return
                 dirty = true
                 needsReadback = true
+                try {
+                    from.setEnabled(desired())
+                } catch (_: RuntimeException) {
+                }
                 applied
             }
             _control.value = true
@@ -242,17 +298,32 @@ internal class DpEffectHandle(
         }
     }
 
-    /** Band count changed (ladder step): the effect must be rebuilt, PreEQ size is fixed at construction. */
+    /**
+     * Band count changed (ladder step): the effect must be rebuilt, PreEQ size is fixed at construction.
+     * The slow construction runs WITHOUT [portLock] so `setEnabled` (bypass!) never waits for it; the desired
+     * enabled state is read again when the fresh port is installed and ALWAYS written.
+     */
     private fun rebuildWith(cfg: EqConfig) {
         synchronized(portLock) {
             if (released.get()) return
-            val enabled = synchronized(stateLock) { desiredEnabled }
-            val fresh = try {
+            rebuilding = true
+            try {
                 port.release()
-                backend.rebuild(session, cfg)
-            } catch (e: RuntimeException) {
-                _control.value = false
-                dirty = true
+            } catch (_: RuntimeException) {
+            }
+        }
+        val fresh = try {
+            backend.createPort(session, cfg, enabled = desired())
+        } catch (e: EffectCreationException) {
+            failRebuild(e.kind)
+            return
+        } catch (e: RuntimeException) {
+            failRebuild(EffectFailureKind.CREATION_FAILED)
+            return
+        }
+        synchronized(portLock) {
+            if (released.get()) {
+                runCatching { fresh.release() }
                 return
             }
             port = fresh
@@ -260,20 +331,26 @@ internal class DpEffectHandle(
             applied = cfg
             dirty = false
             needsReadback = true
+            rebuilding = false
+            _failed.value = null
             _control.value = safeHasControl(fresh)
-            if (enabled) {
-                try {
-                    fresh.setEnabled(true)
-                } catch (_: RuntimeException) {
-                    _control.value = false
-                }
+            try {
+                fresh.setEnabled(desired())
+            } catch (_: RuntimeException) {
+                _control.value = false
             }
         }
     }
 
+    private fun failRebuild(kind: EffectFailureKind) {
+        synchronized(portLock) { dirty = true }
+        _failed.value = kind
+        _control.value = false
+    }
+
     private inline fun locked(block: () -> Unit) {
         synchronized(portLock) {
-            if (released.get()) return
+            if (released.get() || rebuilding) return
             block()
         }
     }
@@ -287,7 +364,7 @@ internal class DpEffectHandle(
         for (ch in 0 until EqConfig.CHANNELS) {
             for (k in idx) {
                 val got = synchronized(portLock) {
-                    if (released.get()) return
+                    if (released.get() || rebuilding) return
                     port.getPreEqBand(ch, k)
                 }
                 if (abs(got.cutoffHz - cfg.bandCutoffsHz[k]) > READBACK_TOLERANCE ||
@@ -298,8 +375,10 @@ internal class DpEffectHandle(
             }
         }
         synchronized(portLock) { needsReadback = false }
-        _clamped.value = mismatch
-        if (mismatch) Log.w(TAG, "readback mismatch: HAL clamped the band layout")
+        if (mismatch) {
+            Log.w(TAG, "readback mismatch: HAL clamped the band layout")
+            _clamped.tryEmit(cfg.bandCount)
+        }
     }
 
     override fun setEnabled(on: Boolean) {
@@ -307,7 +386,7 @@ internal class DpEffectHandle(
         synchronized(stateLock) { desiredEnabled = on }
         try {
             synchronized(portLock) {
-                if (released.get()) return
+                if (released.get() || rebuilding) return
                 port.setEnabled(on)
             }
         } catch (e: UnsupportedOperationException) {

@@ -1,6 +1,8 @@
 package my.umarh.paudio.audio.effect
 
+import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.runBlocking
 import my.umarh.paudio.core.model.EffectCreationException
 import my.umarh.paudio.core.model.EffectFailureKind
 import my.umarh.paudio.core.model.EqConfig
@@ -9,62 +11,16 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-
-private class FakePort(val cfg: EqConfig, val mbc: Boolean) : DpPort {
-    val bands = Array(2) { ch -> Array(cfg.bandCount) { k -> DpBand(cfg.bandCutoffsHz[k], cfg.channelGainsDb[ch][k]) } }
-    val bandWrites = mutableListOf<Triple<Int, Int, DpBand>>()
-    val inputGainWrites = mutableListOf<Pair<Int, Float>>()
-    @Volatile var isOn = false
-    @Volatile var control = true
-    @Volatile var released = false
-    @Volatile var listener: ((Boolean) -> Unit)? = null
-    @Volatile var clampGainTo: Float? = null
-    @Volatile var throwOnWrite: RuntimeException? = null
-
-    override fun setEnabled(on: Boolean) {
-        if (!control) throw UnsupportedOperationException()
-        isOn = on
-    }
-
-    override fun hasControl() = control
-
-    override fun setInputGain(channel: Int, db: Float) {
-        throwOnWrite?.let { throw it }
-        inputGainWrites += channel to db
-    }
-
-    override fun setPreEqBand(channel: Int, index: Int, band: DpBand) {
-        throwOnWrite?.let { throw it }
-        bandWrites += Triple(channel, index, band)
-        bands[channel][index] = band
-    }
-
-    override fun getPreEqBand(channel: Int, index: Int): DpBand {
-        val b = bands[channel][index]
-        return clampGainTo?.let { b.copy(gainDb = minOf(b.gainDb, it)) } ?: b
-    }
-
-    override fun setLimiterEnabled(channel: Int, enabled: Boolean) {}
-    override fun setControlListener(listener: (Boolean) -> Unit) {
-        this.listener = listener
-    }
-
-    override fun release() {
-        released = true
-    }
-}
 
 @RunWith(RobolectricTestRunner::class)
 class DynamicsProcessingBackendTest {
     private val worker = DynamicsProcessingBackend.newWorker()
-    private val ports = mutableListOf<FakePort>()
-    private var failures = mutableListOf<RuntimeException>()
-    private val factory = DpPortFactory { _, _, cfg, mbc ->
-        if (failures.isNotEmpty()) throw failures.removeAt(0)
-        FakePort(cfg, mbc).also { ports += it }
-    }
-    private val backend = DynamicsProcessingBackend(factory, 0L, worker)
+    private val factory = FakePortFactory()
+    private val ports get() = factory.ports
+    private var dpAvailable = true
+    private val backend = DynamicsProcessingBackend(factory, 0L, worker) { dpAvailable }
 
     private fun cfg(gain: Float = 1f, bands: Int = 6, preamp: Float = -1f) = EqConfig(
         preamp,
@@ -121,21 +77,48 @@ class DynamicsProcessingBackendTest {
     }
 
     @Test
-    fun readbackMismatchSetsClamped() {
-        val h = backend.create(3, cfg(gain = 6f))
-        flush()
-        ports.single().clampGainTo = 1f
-        h.apply(cfg(gain = 7f))
-        flush()
-        flush()
-        assertThat(h.clamped.value).isTrue()
+    fun createdEffectIsExplicitlyDisabledEvenIfEnabledFlagIsInherited() {
+        factory.inherited = true
+        backend.create(3, cfg())
+        assertThat(ports.single().isOn).isFalse()
     }
 
     @Test
-    fun readbackMatchLeavesNotClamped() {
-        val h = backend.create(3, cfg())
+    fun readbackMismatchEmitsClampedEventWithBandCount() = runBlocking {
+        val h = backend.create(3, cfg(gain = 6f))
         flush()
-        assertThat(h.clamped.value).isFalse()
+        h.clamped.test {
+            factory.clampGainTo = 1f
+            // a new port reads back clamped: rebuild through a band-count change
+            h.apply(cfg(gain = 7f, bands = 4))
+            flush()
+            assertThat(awaitItem()).isEqualTo(4)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun readbackMatchEmitsNothing() = runBlocking {
+        val h = backend.create(3, cfg())
+        h.clamped.test {
+            flush()
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun repeatedClampsEmitRepeatedEvents() = runBlocking {
+        factory.clampGainTo = 1f
+        val h = backend.create(3, cfg(gain = 6f))
+        h.clamped.test {
+            h.apply(cfg(gain = 7f)) // same band count: write + readback again
+            flush()
+            assertThat(awaitItem()).isEqualTo(6)
+            h.apply(cfg(gain = 8f))
+            flush()
+            assertThat(awaitItem()).isEqualTo(6)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
@@ -164,7 +147,17 @@ class DynamicsProcessingBackendTest {
     }
 
     @Test
-    fun bandCountChangeRebuildsEffect() {
+    fun regainedControlReassertsDesiredDisabledImmediately() {
+        val h = backend.create(3, cfg())
+        h.setEnabled(false)
+        val p = ports.single()
+        p.isOn = true // the other controller left it enabled; we inherit that on regain
+        p.listener!!(true)
+        assertThat(p.isOn).isFalse() // synchronously, before any write batch ran
+    }
+
+    @Test
+    fun bandCountChangeRebuildsEffectAndKeepsDesiredState() {
         val h = backend.create(3, cfg(bands = 6))
         h.setEnabled(true)
         h.apply(cfg(bands = 4))
@@ -175,24 +168,95 @@ class DynamicsProcessingBackendTest {
     }
 
     @Test
+    fun rebuildWithInheritedEnabledStaysOffWhenDisabledDesired() {
+        val h = backend.create(3, cfg(bands = 6))
+        factory.inherited = true
+        h.apply(cfg(bands = 4))
+        flush()
+        assertThat(ports).hasSize(2)
+        assertThat(ports[1].isOn).isFalse()
+    }
+
+    @Test
+    fun setEnabledDuringSlowRebuildDoesNotBlockAndWins() {
+        val h = backend.create(3, cfg(bands = 6))
+        h.setEnabled(true)
+        factory.inherited = true
+        val gate = CountDownLatch(1)
+        factory.gate = gate
+        h.apply(cfg(bands = 4))
+        assertThat(factory.enteredGate.await(5, TimeUnit.SECONDS)).isTrue()
+
+        val t = Thread { h.setEnabled(false) }
+        t.start()
+        t.join(2_000)
+        assertThat(t.isAlive).isFalse() // did not wait for the rebuild
+        gate.countDown()
+        awaitCondition { ports.size == 2 }
+        flush()
+        assertThat(ports[1].isOn).isFalse()
+    }
+
+    @Test
+    fun failedRebuildExposesFailureKind() {
+        val h = backend.create(3, cfg(bands = 6))
+        factory.failures += RuntimeException("1")
+        factory.failures += RuntimeException("2")
+        h.apply(cfg(bands = 4))
+        flush()
+        assertThat(h.failed.value).isEqualTo(EffectFailureKind.CREATION_FAILED)
+        assertThat(h.control.value).isFalse()
+    }
+
+    @Test
     fun unsupportedFromConstructorIsConflict() {
-        failures += UnsupportedOperationException()
+        factory.failures += UnsupportedOperationException()
         val e = assertThrows(EffectCreationException::class.java) { backend.create(3, cfg()) }
         assertThat(e.kind).isEqualTo(EffectFailureKind.CONFLICT)
     }
 
     @Test
+    fun unsupportedWithoutPlatformDpIsCreationFailed() {
+        dpAvailable = false
+        factory.failures += UnsupportedOperationException()
+        val e = assertThrows(EffectCreationException::class.java) { backend.create(3, cfg()) }
+        assertThat(e.kind).isEqualTo(EffectFailureKind.CREATION_FAILED)
+    }
+
+    @Test
     fun runtimeFailureRetriesWithMbcThenSucceeds() {
-        failures += RuntimeException("boom")
+        factory.failures += RuntimeException("boom")
         backend.create(3, cfg())
         assertThat(ports.single().mbc).isTrue()
     }
 
     @Test
     fun failureAfterRetryIsCreationFailed() {
-        failures += RuntimeException("1")
-        failures += IllegalArgumentException("2")
+        factory.failures += RuntimeException("1")
+        factory.failures += IllegalArgumentException("2")
         val e = assertThrows(EffectCreationException::class.java) { backend.create(3, cfg()) }
         assertThat(e.kind).isEqualTo(EffectFailureKind.CREATION_FAILED)
+    }
+
+    @Test
+    fun writeBatchesAreSpacedAtLeast50MsApartAtExecutionTime() {
+        val w = DynamicsProcessingBackend.newWorker()
+        try {
+            val spaced = DynamicsProcessingBackend(factory, MIN_WRITE_SPACING_MS, w) { true }
+            val h1 = spaced.create(1, cfg())
+            val h2 = spaced.create(2, cfg())
+            // queue several batches back to back from two handles
+            h1.apply(cfg(gain = 2f))
+            h2.apply(cfg(gain = 3f))
+            h1.apply(cfg(gain = 4f))
+            awaitCondition { ports[0].bands[0][0].gainDb == 4f && ports[1].bands[0][0].gainDb == 3f }
+            val stamps = (ports[0].writeNanos + ports[1].writeNanos).sorted()
+            // writes within one batch are back to back; find batch boundaries (gap > 10 ms) and check them
+            val gaps = stamps.zipWithNext { a, b -> (b - a) / 1_000_000.0 }.filter { it > 10.0 }
+            assertThat(gaps).isNotEmpty()
+            assertThat(gaps.min()).isAtLeast(45.0)
+        } finally {
+            w.shutdownNow()
+        }
     }
 }
