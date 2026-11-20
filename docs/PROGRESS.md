@@ -120,3 +120,10 @@
 - Tests: JVM math/seed tests + Robolectric Compose tests (light/dark, semantics, DisclaimerCard has no click/dismiss/expand/collapse action).
 - Note: `./gradlew verifyFeatureBoundaries` reports "implicit dependency" validation errors when run in the same invocation as other build tasks (pre-existing build-logic issue); run it alone.
 - M7b review fixes: `configFor` takes the real output sample rate and ladder (`AbPlayerFactory.outputSampleRate()`, `DpEqPlanner.fromCurve`); `swapTo` required before `play`; bypass acquired in `load`; device checklist: ClippingMediaSource loop is re-seek (not sample-gapless), duck click-free, focus loss.
+
+## M10 — Hearing health (feature:health)
+- `HealthRoute(profileId: Long? = null, testId: Long? = null)` (type-safe, `@Serializable`); no profileId => most recently tested profile (active listener's first). `nav.navigate(HealthRoute(profileId = id))`.
+- `HealthViewModel` -> `HealthUiState` (Loading / Empty / Content). Pure mapping in `HealthMapper` (MeasurementModel.compute per test; trend = PTA3 per ear recomputed from raw thresholds for `observeForTrend(profileId, headsetKey)`, shown when >= 2). Headset key = test's deviceSnapshot key, else the profile's headset.
+- Screen: WHO legend + Audiogram, per-ear PTA3/EHF (EHF number only, no grade), approximate grade of better ear with DECISIONS 17 caveat, asymmetry/reliability notes, trend card, "How to read this" ModalBottomSheet; disclaimer is the Scaffold bottomBar (always visible, no actions).
+- Tests: mapper goldens, VM (fakes), Robolectric UI (disclaimer no click/dismiss/expand/collapse incl. ancestors, stays after scroll; empty; content+trend), strings scan for forbidden words (the normative disclaimer's "medical diagnosis" is the only allowed "diagnos").
+- app: `nav.navigate(HealthRoute())` (route became a data class).
