@@ -49,6 +49,29 @@ object DpEqPlanner {
         )
     }
 
+    /**
+     * Plan for already-final per-ear curves on the [DspGrid] (e.g. in-app A/B options) with an externally
+     * chosen [preampDb]. `curve.gh*` are not known here and mirror G; use only [DpEqPlan.curve]'s `g*`/preamp.
+     */
+    fun fromCurve(
+        gLeft: DoubleArray,
+        gRight: DoubleArray,
+        preampDb: Float,
+        fs: Int,
+        frameMs: Float = DP_FRAME_MS,
+        ladder: DpLadderStep = DpLadderStep.MAIN,
+    ): DpEqPlan {
+        val layout = layoutFor(fs, frameMs, ladder)
+        return DpEqPlan(
+            layout = layout,
+            cutoffHz = FloatArray(layout.bandCount) { layout.cutoffHz[it].toFloat() },
+            gainsLeft = DpBandMapper.map(layout, gLeft),
+            gainsRight = DpBandMapper.map(layout, gRight),
+            preampDb = preampDb,
+            curve = CurveResult(gLeft, gRight, gLeft, gRight, preampDb.toDouble()),
+        )
+    }
+
     /** All-zero gains and 0 dB preamp (Original mode). */
     fun flat(fs: Int, frameMs: Float = DP_FRAME_MS, ladder: DpLadderStep = DpLadderStep.MAIN): DpEqPlan {
         val layout = layoutFor(fs, frameMs, ladder)
