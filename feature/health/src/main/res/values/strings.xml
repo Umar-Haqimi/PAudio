@@ -2,4 +2,72 @@
 <resources>
     <string name="feature_health_title">Hearing health</string>
     <string name="health_back">Back</string>
+
+    <!-- Normative disclaimer (SPEC section 4, flow 4). Do not reword. -->
+    <string name="health_disclaimer">PAudio is not a medical device. These results are estimates for music listening only and are not a medical diagnosis. Phones and earphones can\'t be calibrated like clinical equipment, so hearing loss that is equal across all frequencies can\'t be detected. If you notice changes in your hearing, ringing, or pain, see a doctor or audiologist.</string>
+
+    <string name="health_loading">Loading your results</string>
+    <string name="health_empty_title">No hearing test yet</string>
+    <string name="health_empty_body">Take a hearing test with your headphones to see an estimated audiogram and summary here.</string>
+
+    <string name="health_test_info">Latest test: %1$s, %2$s mode</string>
+    <string name="health_mode_quick">Quick</string>
+    <string name="health_mode_thorough">Thorough</string>
+
+    <string name="health_audiogram_title">Estimated audiogram</string>
+    <string name="health_audiogram_note">Values are estimated relative to your better ear at 1 and 2 kHz. They are not calibrated clinical measurements.</string>
+    <string name="health_censored_note">Points marked with a down arrow are beyond test range: you did not hear them at the loudest level PAudio allows, so the real value may be higher. That does not mean no hearing at those frequencies.</string>
+
+    <string name="health_summary_title_right">Right ear</string>
+    <string name="health_summary_title_left">Left ear</string>
+    <string name="health_pta_label">Speech-range average (1, 2 and 4 kHz)</string>
+    <string name="health_pta_value">About %1$s dB (estimated)</string>
+    <string name="health_ehf_label">High-frequency average (10, 12.5 and 14 kHz)</string>
+    <string name="health_ehf_value">About %1$s dB (estimated)</string>
+    <string name="health_ehf_explain">Shown as a number only. There is no grade for these very high pitches, and they naturally fade with age and noise exposure.</string>
+    <string name="health_ehf_beyond_range">Some of these points are beyond the test range, so the real value may be higher.</string>
+
+    <string name="health_grade_title">Approximate grade (better ear)</string>
+    <string name="health_grade_normal">Approximately normal range (estimated)</string>
+    <string name="health_grade_mild">Approximately mild range (estimated)</string>
+    <string name="health_grade_moderate">Approximately moderate range (estimated)</string>
+    <string name="health_grade_moderately_severe">Approximately moderately severe range (estimated)</string>
+    <string name="health_grade_severe">Approximately severe range (estimated)</string>
+    <string name="health_grade_profound">Approximately profound range (estimated)</string>
+    <string name="health_grade_complete">Approximately complete-loss range (estimated)</string>
+    <string name="health_grade_caveat">This grade is approximate. It uses the WHO 2021 bands on your better ear without the 0.5 kHz test, and it cannot detect hearing loss that is flat across all frequencies or limited to low frequencies. It is not a statement that your hearing is healthy or unhealthy.</string>
+
+    <string name="health_asymmetry_title">Difference between ears</string>
+    <string name="health_asymmetry_chip">Ears differ</string>
+    <string name="health_asymmetry_body">Your ears may differ by 15 dB or more across neighbouring frequencies. This can have many ordinary causes, such as earwax or headphone fit. If it persists, consider seeing an audiologist.</string>
+
+    <string name="health_reliability_title">Reliability</string>
+    <string name="health_reliability_chip">Less reliable</string>
+    <string name="health_reliability_unreliable">You pressed the button during some silent moments, so this test may be less reliable. Consider repeating it in a quiet place.</string>
+    <plurals name="health_reliability_low_confidence">
+        <item quantity="one">%1$d point was inconsistent between repeats and is shown with a dashed outline. Treat it as especially rough.</item>
+        <item quantity="other">%1$d points were inconsistent between repeats and are shown with a dashed outline. Treat them as especially rough.</item>
+    </plurals>
+
+    <string name="health_trend_title">Trend over time</string>
+    <plurals name="health_trend_summary">
+        <item quantity="one">%1$d test with these headphones</item>
+        <item quantity="other">%1$d tests with these headphones</item>
+    </plurals>
+    <string name="health_trend_same_headset">Only tests with the same profile and the same headphones are compared, because different headphones sound different.</string>
+    <string name="health_trend_empty">Take another test with the same headphones to see a trend.</string>
+
+    <string name="health_how_to_read">How to read this</string>
+    <string name="health_sheet_close">Close</string>
+    <string name="health_sheet_title">How to read this</string>
+    <string name="health_sheet_axes_title">The chart</string>
+    <string name="health_sheet_axes_body">Pitch runs from left to right, from 1 kHz to 14 kHz. Estimated level runs from top to bottom: points closer to the top mean you heard softer sounds, points lower down mean sounds had to be louder.</string>
+    <string name="health_sheet_markers_title">Markers</string>
+    <string name="health_sheet_markers_body">A red circle is your right ear and a blue cross is your left ear. A down arrow marks a point beyond test range: you did not hear it at the loudest level PAudio allows, so the real value may be higher. A dashed outline marks a point that was inconsistent between repeats.</string>
+    <string name="health_sheet_bands_title">Coloured bands</string>
+    <string name="health_sheet_bands_body">The bands follow the WHO 2021 hearing grades. The grade shown is approximate: it comes from your better ear, uses 1, 2 and 4 kHz, and is estimated from phone and earphone playback.</string>
+    <string name="health_sheet_limits_title">What this cannot show</string>
+    <string name="health_sheet_limits_body">Phones and earphones cannot be calibrated like clinical equipment, so PAudio compares your ears and pitches with each other. Hearing loss that is the same at every pitch, or limited to low pitches, cannot be detected this way. A result in the normal range does not mean your hearing is fine.</string>
+    <string name="health_sheet_trend_title">Trends</string>
+    <string name="health_sheet_trend_body">The trend only compares tests taken with the same profile and the same headphones. A change may come from the headphones, their fit or the room, so consider repeating a test before drawing conclusions.</string>
 </resources>

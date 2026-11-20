@@ -33,7 +33,7 @@ fun PAudioNavHost() {
         homeScreen(
             onHearingTest = { nav.navigate(HearingTestRoute) },
             onPreferenceTest = { nav.navigate(PreferenceRoute) },
-            onHealth = { nav.navigate(HealthRoute) },
+            onHealth = { nav.navigate(HealthRoute()) },
             onProfiles = { nav.navigate(ProfilesRoute) },
             onSettings = { nav.navigate(SettingsRoute) },
         )
