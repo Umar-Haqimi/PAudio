@@ -45,6 +45,9 @@ interface ProfileDao {
     )
     suspend fun getForHeadsetKey(listenerId: Long, key: String): ProfileEntity?
 
+    @Query("UPDATE profile SET personalizationOn = :on, updatedAt = :now WHERE id = :id")
+    suspend fun setPersonalization(id: Long, on: Boolean, now: Long)
+
     @Query(
         "UPDATE profile SET compStrength = :compStrength, gB = :gB, gP = :gP, gT = :gT, " +
             "personalizationOn = :personalizationOn, updatedAt = :now WHERE id = :id",
