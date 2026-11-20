@@ -1,0 +1,671 @@
+{
+ "version": 1,
+ "cases": [
+  {
+   "name": "all_plus_hits_clamps",
+   "choices": [
+    "+",
+    "+",
+    "+",
+    "+",
+    "+",
+    "+",
+    "+",
+    "+",
+    "+"
+   ],
+   "gB": 10.5,
+   "gP": 6.0,
+   "gT": 8.0,
+   "rounds": [
+    {
+     "axis": "BASS",
+     "low": -6.0,
+     "high": 6.0,
+     "choice": "+",
+     "picked": 6.0
+    },
+    {
+     "axis": "PRESENCE",
+     "low": -4.0,
+     "high": 4.0,
+     "choice": "+",
+     "picked": 4.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": -5.0,
+     "high": 5.0,
+     "choice": "+",
+     "picked": 5.0
+    },
+    {
+     "axis": "BASS",
+     "low": 3.0,
+     "high": 9.0,
+     "choice": "+",
+     "picked": 9.0
+    },
+    {
+     "axis": "PRESENCE",
+     "low": 2.0,
+     "high": 6.0,
+     "choice": "+",
+     "picked": 6.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": 2.5,
+     "high": 7.5,
+     "choice": "+",
+     "picked": 7.5
+    },
+    {
+     "axis": "BASS",
+     "low": 7.5,
+     "high": 10.5,
+     "choice": "+",
+     "picked": 10.5
+    },
+    {
+     "axis": "PRESENCE",
+     "low": 5.0,
+     "high": 6.0,
+     "choice": "+",
+     "picked": 6.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": 6.25,
+     "high": 8.0,
+     "choice": "+",
+     "picked": 8.0
+    }
+   ]
+  },
+  {
+   "name": "all_minus",
+   "choices": [
+    "-",
+    "-",
+    "-",
+    "-",
+    "-",
+    "-",
+    "-",
+    "-",
+    "-"
+   ],
+   "gB": -6.0,
+   "gP": -6.0,
+   "gT": -8.0,
+   "rounds": [
+    {
+     "axis": "BASS",
+     "low": -6.0,
+     "high": 6.0,
+     "choice": "-",
+     "picked": -6.0
+    },
+    {
+     "axis": "PRESENCE",
+     "low": -4.0,
+     "high": 4.0,
+     "choice": "-",
+     "picked": -4.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": -5.0,
+     "high": 5.0,
+     "choice": "-",
+     "picked": -5.0
+    },
+    {
+     "axis": "BASS",
+     "low": -6.0,
+     "high": -3.0,
+     "choice": "-",
+     "picked": -6.0
+    },
+    {
+     "axis": "PRESENCE",
+     "low": -6.0,
+     "high": -2.0,
+     "choice": "-",
+     "picked": -6.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": -7.5,
+     "high": -2.5,
+     "choice": "-",
+     "picked": -7.5
+    },
+    {
+     "axis": "BASS",
+     "low": -6.0,
+     "high": -4.5,
+     "choice": "-",
+     "picked": -6.0
+    },
+    {
+     "axis": "PRESENCE",
+     "low": -6.0,
+     "high": -5.0,
+     "choice": "-",
+     "picked": -6.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": -8.0,
+     "high": -6.25,
+     "choice": "-",
+     "picked": -8.0
+    }
+   ]
+  },
+  {
+   "name": "alternating_plus_first",
+   "choices": [
+    "+",
+    "-",
+    "+",
+    "-",
+    "+",
+    "-",
+    "+",
+    "-",
+    "+"
+   ],
+   "gB": 4.5,
+   "gP": -3.0,
+   "gT": 3.75,
+   "rounds": [
+    {
+     "axis": "BASS",
+     "low": -6.0,
+     "high": 6.0,
+     "choice": "+",
+     "picked": 6.0
+    },
+    {
+     "axis": "PRESENCE",
+     "low": -4.0,
+     "high": 4.0,
+     "choice": "-",
+     "picked": -4.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": -5.0,
+     "high": 5.0,
+     "choice": "+",
+     "picked": 5.0
+    },
+    {
+     "axis": "BASS",
+     "low": 3.0,
+     "high": 9.0,
+     "choice": "-",
+     "picked": 3.0
+    },
+    {
+     "axis": "PRESENCE",
+     "low": -6.0,
+     "high": -2.0,
+     "choice": "+",
+     "picked": -2.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": 2.5,
+     "high": 7.5,
+     "choice": "-",
+     "picked": 2.5
+    },
+    {
+     "axis": "BASS",
+     "low": 1.5,
+     "high": 4.5,
+     "choice": "+",
+     "picked": 4.5
+    },
+    {
+     "axis": "PRESENCE",
+     "low": -3.0,
+     "high": -1.0,
+     "choice": "-",
+     "picked": -3.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": 1.25,
+     "high": 3.75,
+     "choice": "+",
+     "picked": 3.75
+    }
+   ]
+  },
+  {
+   "name": "alternating_minus_first",
+   "choices": [
+    "-",
+    "+",
+    "-",
+    "+",
+    "-",
+    "+",
+    "-",
+    "+",
+    "-"
+   ],
+   "gB": -4.5,
+   "gP": 3.0,
+   "gT": -3.75,
+   "rounds": [
+    {
+     "axis": "BASS",
+     "low": -6.0,
+     "high": 6.0,
+     "choice": "-",
+     "picked": -6.0
+    },
+    {
+     "axis": "PRESENCE",
+     "low": -4.0,
+     "high": 4.0,
+     "choice": "+",
+     "picked": 4.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": -5.0,
+     "high": 5.0,
+     "choice": "-",
+     "picked": -5.0
+    },
+    {
+     "axis": "BASS",
+     "low": -6.0,
+     "high": -3.0,
+     "choice": "+",
+     "picked": -3.0
+    },
+    {
+     "axis": "PRESENCE",
+     "low": 2.0,
+     "high": 6.0,
+     "choice": "-",
+     "picked": 2.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": -7.5,
+     "high": -2.5,
+     "choice": "+",
+     "picked": -2.5
+    },
+    {
+     "axis": "BASS",
+     "low": -4.5,
+     "high": -1.5,
+     "choice": "-",
+     "picked": -4.5
+    },
+    {
+     "axis": "PRESENCE",
+     "low": 1.0,
+     "high": 3.0,
+     "choice": "+",
+     "picked": 3.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": -3.75,
+     "high": -1.25,
+     "choice": "-",
+     "picked": -3.75
+    }
+   ]
+  },
+  {
+   "name": "mixed",
+   "choices": [
+    "+",
+    "-",
+    "-",
+    "+",
+    "+",
+    "-",
+    "+",
+    "-",
+    "+"
+   ],
+   "gB": 10.5,
+   "gP": -3.0,
+   "gT": -6.25,
+   "rounds": [
+    {
+     "axis": "BASS",
+     "low": -6.0,
+     "high": 6.0,
+     "choice": "+",
+     "picked": 6.0
+    },
+    {
+     "axis": "PRESENCE",
+     "low": -4.0,
+     "high": 4.0,
+     "choice": "-",
+     "picked": -4.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": -5.0,
+     "high": 5.0,
+     "choice": "-",
+     "picked": -5.0
+    },
+    {
+     "axis": "BASS",
+     "low": 3.0,
+     "high": 9.0,
+     "choice": "+",
+     "picked": 9.0
+    },
+    {
+     "axis": "PRESENCE",
+     "low": -6.0,
+     "high": -2.0,
+     "choice": "+",
+     "picked": -2.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": -7.5,
+     "high": -2.5,
+     "choice": "-",
+     "picked": -7.5
+    },
+    {
+     "axis": "BASS",
+     "low": 7.5,
+     "high": 10.5,
+     "choice": "+",
+     "picked": 10.5
+    },
+    {
+     "axis": "PRESENCE",
+     "low": -3.0,
+     "high": -1.0,
+     "choice": "-",
+     "picked": -3.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": -8.0,
+     "high": -6.25,
+     "choice": "+",
+     "picked": -6.25
+    }
+   ]
+  },
+  {
+   "name": "cant_tell_all_immediately",
+   "choices": [
+    "?",
+    "?",
+    "?"
+   ],
+   "gB": 0.0,
+   "gP": 0.0,
+   "gT": 0.0,
+   "rounds": [
+    {
+     "axis": "BASS",
+     "low": -6.0,
+     "high": 6.0,
+     "choice": "?",
+     "picked": null
+    },
+    {
+     "axis": "PRESENCE",
+     "low": -4.0,
+     "high": 4.0,
+     "choice": "?",
+     "picked": null
+    },
+    {
+     "axis": "TREBLE",
+     "low": -5.0,
+     "high": 5.0,
+     "choice": "?",
+     "picked": null
+    }
+   ]
+  },
+  {
+   "name": "cant_tell_bass_round2",
+   "choices": [
+    "+",
+    "+",
+    "+",
+    "?",
+    "+",
+    "+",
+    "+",
+    "+"
+   ],
+   "gB": 6.0,
+   "gP": 6.0,
+   "gT": 8.0,
+   "rounds": [
+    {
+     "axis": "BASS",
+     "low": -6.0,
+     "high": 6.0,
+     "choice": "+",
+     "picked": 6.0
+    },
+    {
+     "axis": "PRESENCE",
+     "low": -4.0,
+     "high": 4.0,
+     "choice": "+",
+     "picked": 4.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": -5.0,
+     "high": 5.0,
+     "choice": "+",
+     "picked": 5.0
+    },
+    {
+     "axis": "BASS",
+     "low": 3.0,
+     "high": 9.0,
+     "choice": "?",
+     "picked": null
+    },
+    {
+     "axis": "PRESENCE",
+     "low": 2.0,
+     "high": 6.0,
+     "choice": "+",
+     "picked": 6.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": 2.5,
+     "high": 7.5,
+     "choice": "+",
+     "picked": 7.5
+    },
+    {
+     "axis": "PRESENCE",
+     "low": 5.0,
+     "high": 6.0,
+     "choice": "+",
+     "picked": 6.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": 6.25,
+     "high": 8.0,
+     "choice": "+",
+     "picked": 8.0
+    }
+   ]
+  },
+  {
+   "name": "cant_tell_presence_round2",
+   "choices": [
+    "+",
+    "-",
+    "+",
+    "-",
+    "?",
+    "+",
+    "-",
+    "+"
+   ],
+   "gB": 1.5,
+   "gP": -4.0,
+   "gT": 8.0,
+   "rounds": [
+    {
+     "axis": "BASS",
+     "low": -6.0,
+     "high": 6.0,
+     "choice": "+",
+     "picked": 6.0
+    },
+    {
+     "axis": "PRESENCE",
+     "low": -4.0,
+     "high": 4.0,
+     "choice": "-",
+     "picked": -4.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": -5.0,
+     "high": 5.0,
+     "choice": "+",
+     "picked": 5.0
+    },
+    {
+     "axis": "BASS",
+     "low": 3.0,
+     "high": 9.0,
+     "choice": "-",
+     "picked": 3.0
+    },
+    {
+     "axis": "PRESENCE",
+     "low": -6.0,
+     "high": -2.0,
+     "choice": "?",
+     "picked": null
+    },
+    {
+     "axis": "TREBLE",
+     "low": 2.5,
+     "high": 7.5,
+     "choice": "+",
+     "picked": 7.5
+    },
+    {
+     "axis": "BASS",
+     "low": 1.5,
+     "high": 4.5,
+     "choice": "-",
+     "picked": 1.5
+    },
+    {
+     "axis": "TREBLE",
+     "low": 6.25,
+     "high": 8.0,
+     "choice": "+",
+     "picked": 8.0
+    }
+   ]
+  },
+  {
+   "name": "cant_tell_treble_round2",
+   "choices": [
+    "+",
+    "-",
+    "+",
+    "-",
+    "+",
+    "?",
+    "-",
+    "+"
+   ],
+   "gB": 1.5,
+   "gP": -1.0,
+   "gT": 5.0,
+   "rounds": [
+    {
+     "axis": "BASS",
+     "low": -6.0,
+     "high": 6.0,
+     "choice": "+",
+     "picked": 6.0
+    },
+    {
+     "axis": "PRESENCE",
+     "low": -4.0,
+     "high": 4.0,
+     "choice": "-",
+     "picked": -4.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": -5.0,
+     "high": 5.0,
+     "choice": "+",
+     "picked": 5.0
+    },
+    {
+     "axis": "BASS",
+     "low": 3.0,
+     "high": 9.0,
+     "choice": "-",
+     "picked": 3.0
+    },
+    {
+     "axis": "PRESENCE",
+     "low": -6.0,
+     "high": -2.0,
+     "choice": "+",
+     "picked": -2.0
+    },
+    {
+     "axis": "TREBLE",
+     "low": 2.5,
+     "high": 7.5,
+     "choice": "?",
+     "picked": null
+    },
+    {
+     "axis": "BASS",
+     "low": 1.5,
+     "high": 4.5,
+     "choice": "-",
+     "picked": 1.5
+    },
+    {
+     "axis": "PRESENCE",
+     "low": -3.0,
+     "high": -1.0,
+     "choice": "+",
+     "picked": -1.0
+    }
+   ]
+  }
+ ]
+}
