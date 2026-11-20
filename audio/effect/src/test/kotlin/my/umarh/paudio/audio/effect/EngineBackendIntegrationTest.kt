@@ -49,9 +49,13 @@ class EngineBackendIntegrationTest {
         e.setRoute(FakeOutputDevices.WIRED_HEADPHONES, cfg(6))
         e.setRunning(true)
         val token = e.acquire(BypassReason.CALIBRATION)
-        awaitCondition { source.open(5, "p"); factory.ports.size == 1 }
-        awaitCondition { e.diagnostics.value.liveSessions == 1 }
-        assertThat(factory.ports.filter { it.isOn }).isEmpty()
+        awaitCondition { source.open(5, "p"); e.diagnostics.value.liveSessions == 1 }
+        Thread.sleep(100)
+        assertThat(factory.ports).isEmpty() // no creation during a bypass
+        token.close()
+        awaitCondition { factory.ports.size == 1 && factory.ports[0].isOn }
+        val token2 = e.acquire(BypassReason.CALIBRATION)
+        assertThat(factory.ports.filter { it.isOn && !it.released }).isEmpty()
         // ladder rebuild (new band count) while bypassed
         e.setTarget(cfg(4))
         awaitCondition { factory.ports.size == 2 }
@@ -59,11 +63,11 @@ class EngineBackendIntegrationTest {
         assertThat(factory.ports.filter { it.isOn && !it.released }).isEmpty()
         // retry() while bypassed
         e.retry()
-        awaitCondition { factory.ports.size == 3 }
-        Thread.sleep(150)
+        Thread.sleep(100)
+        assertThat(factory.ports.size).isEqualTo(2) // retry's recreation waits for the token
         assertThat(factory.ports.filter { it.isOn && !it.released }).isEmpty()
-        token.close()
-        awaitCondition { factory.ports.last().isOn }
+        token2.close()
+        awaitCondition { factory.ports.size == 3 && factory.ports.last().isOn }
     }
 
     @Test

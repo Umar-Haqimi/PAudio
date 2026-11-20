@@ -126,6 +126,7 @@ class DynamicsProcessingBackendTest {
         val h = backend.create(3, cfg())
         flush()
         ports.single().throwOnWrite = UnsupportedOperationException()
+        ports.single().control = false
         h.apply(cfg(gain = 5f))
         flush()
         assertThat(h.control.value).isFalse()
@@ -190,7 +191,7 @@ class DynamicsProcessingBackendTest {
         val t = Thread { h.setEnabled(false) }
         t.start()
         t.join(2_000)
-        assertThat(t.isAlive).isFalse() // did not wait for the rebuild
+        assertThat(t.isAlive).isFalse() // waits at most REBUILD_WAIT_MS, never for the whole rebuild
         gate.countDown()
         awaitCondition { ports.size == 2 }
         flush()
@@ -258,5 +259,91 @@ class DynamicsProcessingBackendTest {
         } finally {
             w.shutdownNow()
         }
+    }
+
+    @Test
+    fun rebuildNeverEnablesFreshPortAfterDisableReturned() {
+        val h = backend.create(3, cfg(bands = 6))
+        h.setEnabled(true)
+        factory.inherited = true
+        val gate = CountDownLatch(1)
+        factory.gate = gate
+        h.apply(cfg(bands = 4)) // desired() == true while the new port is constructed
+        assertThat(factory.enteredGate.await(5, TimeUnit.SECONDS)).isTrue()
+        h.setEnabled(false)
+        gate.countDown()
+        awaitCondition { ports.size == 2 }
+        flush()
+        // the fresh port inherits true but we only ever write false to it
+        assertThat(ports[1].isOn).isFalse()
+        assertThat(ports[1].enabledWrites).doesNotContain(true)
+    }
+
+    @Test
+    fun portIsDisabledBeforeEveryRelease() {
+        val h = backend.create(3, cfg(bands = 6))
+        h.setEnabled(true)
+        h.apply(cfg(bands = 4)) // rebuild releases ports[0]
+        flush()
+        assertThat(ports[0].enabledAtRelease).isFalse()
+        h.setEnabled(true)
+        h.release()
+        assertThat(ports[1].enabledAtRelease).isFalse()
+    }
+
+    @Test
+    fun lateLostControlDoesNotOverwriteRegain() {
+        // The write throws UOE, but the control listener reports the regain before the failure handler runs.
+        val inners = ArrayList<FakePort>()
+        var armed = false
+        val f = DpPortFactory { _, _, c, mbc ->
+            val inner = FakePort(c, mbc, false, null).also { inners += it }
+            object : DpPort by inner {
+                override fun setPreEqBand(channel: Int, index: Int, band: DpBand) {
+                    if (armed) {
+                        armed = false
+                        inner.listener!!(true)
+                        throw UnsupportedOperationException()
+                    }
+                    inner.setPreEqBand(channel, index, band)
+                }
+            }
+        }
+        val b = DynamicsProcessingBackend(f, 0L, worker) { true }
+        val h = b.create(3, cfg())
+        flush()
+        armed = true
+        h.apply(cfg(gain = 5f))
+        flush()
+        flush()
+        assertThat(h.control.value).isTrue()
+    }
+
+    @Test
+    fun failedRebuildThenWriteStaysDirty() {
+        val h = backend.create(3, cfg(bands = 6))
+        flush()
+        factory.failures += RuntimeException("1")
+        factory.failures += RuntimeException("2")
+        h.apply(cfg(bands = 4))
+        flush()
+        assertThat(h.failed.value).isEqualTo(EffectFailureKind.CREATION_FAILED)
+        // a later write for the old layout is skipped (port released) and must not be recorded as applied
+        h.apply(cfg(bands = 6, gain = 9f))
+        flush()
+        assertThat(ports.single().bandWrites).isEmpty()
+    }
+
+    @Test
+    fun disableAfterFailedRebuildReturnsQuickly() {
+        val h = backend.create(3, cfg(bands = 6))
+        factory.failures += RuntimeException("1")
+        factory.failures += RuntimeException("2")
+        h.apply(cfg(bands = 4))
+        flush()
+        assertThat(h.failed.value).isEqualTo(EffectFailureKind.CREATION_FAILED)
+        val t0 = System.nanoTime()
+        h.setEnabled(false)
+        assertThat((System.nanoTime() - t0) / 1_000_000).isLessThan(REBUILD_WAIT_MS / 2)
     }
 }

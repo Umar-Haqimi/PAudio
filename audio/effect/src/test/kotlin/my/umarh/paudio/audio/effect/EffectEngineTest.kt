@@ -174,8 +174,8 @@ class EffectEngineTest {
 
         // everything that could re-enable while bypassed
         r.session.open(6, "late")
-        assertThat(r.backend.handles).hasSize(2) // created
-        assertThat(r.backend.enabledRequested).isEmpty() // but kept disabled
+        assertThat(r.backend.handles).hasSize(1) // no creation starts during a bypass
+        assertThat(r.backend.enabledRequested).isEmpty()
         r.engine.setTarget(r.cfg2)
         assertThat(r.backend.enabledRequested).isEmpty()
         r.engine.setOutputDevice(FakeOutputDevices.BLUETOOTH_BUDS)
@@ -391,12 +391,8 @@ class EffectEngineTest {
         r.start()
         val t = r.engine.acquire(BypassReason.CALIBRATION)
         r.session.open(5, "p")
-        assertThat(r.backend.handles).hasSize(1)
-        assertThat(r.backend.enabledRequested).isEmpty()
+        assertThat(r.backend.handles).isEmpty() // no creation during a bypass
         r.engine.retry()
-        assertThat(r.backend.enabledRequested).isEmpty()
-        r.backend.handles.last().setControl(false)
-        r.backend.handles.last().setControl(true)
         assertThat(r.backend.enabledRequested).isEmpty()
         t.close()
         assertThat(r.backend.enabledRequested).hasSize(1)
@@ -434,8 +430,45 @@ class EffectEngineTest {
         val h = r.backend.handles.single()
         h.setFailed(EffectFailureKind.CONFLICT)
         assertThat(r.engine.state.value).isEqualTo(EngineState.Conflict)
-        h.setFailed(EffectFailureKind.CREATION_FAILED)
+        assertThat(h.released).isTrue() // zombie dropped; recreated on retry
+        r.engine.retry()
+        val h2 = r.backend.handles.last()
+        assertThat(h2).isNotSameInstanceAs(h)
+        h2.setFailed(EffectFailureKind.CREATION_FAILED)
         assertThat(r.engine.state.value).isEqualTo(EngineState.Error(EngineError.CREATION_FAILED))
+    }
+
+    @Test
+    fun failedRebuildDropsZombieAndRecreatesAfterDeviceChange() = runTest {
+        val r = Rig(this)
+        r.start()
+        r.session.open(5, "p")
+        val h = r.backend.handles.single()
+        h.setFailed(EffectFailureKind.CREATION_FAILED) // what a failed ladder rebuild reports
+        assertThat(h.released).isTrue()
+        assertThat(r.engine.state.value).isEqualTo(EngineState.Error(EngineError.CREATION_FAILED))
+        r.engine.setRoute(FakeOutputDevices.BLUETOOTH_BUDS, r.cfg2)
+        assertThat(r.backend.handles).hasSize(2)
+        val h2 = r.backend.handles.last()
+        assertThat(h2.released).isFalse()
+        assertThat(h2.enabled).isTrue()
+        assertThat(r.engine.state.value).isEqualTo(EngineState.Active(listOf("p")))
+    }
+
+    @Test
+    fun releasingEnabledHandleIsObservableAndNextHandleIsRewritten() = runTest {
+        val r = Rig(this)
+        r.start()
+        r.session.open(5, "p")
+        r.session.close(5, "p")
+        // the fake models AOSP: the departing controller's enabled flag moves to the next controller
+        r.session.open(6, "p")
+        val next = r.backend.handles.last()
+        assertThat(next.session).isEqualTo(6)
+        assertThat(next.enabled).isTrue() // desired state, rewritten after inheriting
+        val tok = r.engine.acquire(BypassReason.CALIBRATION)
+        assertThat(r.backend.enabledRequested).isEmpty()
+        tok.close()
     }
 
     @Test
@@ -515,5 +548,18 @@ class EffectEngineTest {
         r.session.open(5, "p")
         advanceTimeBy(10_000)
         assertThat(r.engine.noSessionHint.value).isFalse()
+    }
+
+    @Test
+    fun noCreationDuringBypassUntilTokenCloses() = runTest {
+        val r = Rig(this)
+        r.start()
+        val tok = r.engine.acquire(BypassReason.CALIBRATION)
+        r.session.open(5, "p")
+        assertThat(r.backend.createCalls).isEmpty()
+        tok.close()
+        assertThat(r.backend.createCalls).containsExactly(5)
+        assertThat(r.backend.handles.single().enabled).isTrue()
+        assertThat(r.engine.state.value).isEqualTo(EngineState.Active(listOf("p")))
     }
 }

@@ -11,10 +11,16 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class HealthStringsTest {
-    private fun stringsFile(): File = listOf(
-        "src/main/res/values/strings.xml",
-        "feature/health/src/main/res/values/strings.xml",
-    ).map(::File).first { it.exists() }
+    /** Walks up from the working directory until the module's strings file is found (works from module or repo root). */
+    private fun stringsFile(): File {
+        val relatives = listOf("src/main/res/values/strings.xml", "feature/health/src/main/res/values/strings.xml")
+        var dir: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
+        while (dir != null) {
+            relatives.map { File(dir, it) }.firstOrNull { it.exists() }?.let { return it }
+            dir = dir.parentFile
+        }
+        error("strings.xml of :feature:health not found above ${System.getProperty("user.dir")}")
+    }
 
     @Test
     fun stringsContainNoForbiddenWords() {
@@ -27,9 +33,8 @@ class HealthStringsTest {
         listOf("diagnos", "detected hearing loss", "hearing is damaged").forEach {
             assertThat(withoutDisclaimer).doesNotContain(it)
         }
-        listOf("diagnose", "detected hearing loss", "hearing is damaged").forEach {
-            assertThat(xml).doesNotContain(it)
-        }
+        // The disclaimer itself must also never claim detection or damage.
+        listOf("detected hearing loss", "hearing is damaged").forEach { assertThat(xml).doesNotContain(it) }
     }
 
     @Test

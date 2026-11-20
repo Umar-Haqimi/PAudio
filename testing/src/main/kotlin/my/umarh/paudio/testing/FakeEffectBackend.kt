@@ -36,17 +36,48 @@ class FakeEffectBackend : EffectBackend {
     @Volatile var failCreates: EffectFailureKind? = null
     val createCalls: MutableList<Int> = CopyOnWriteArrayList()
 
+    /**
+     * AOSP `removeHandle_l` hands the departing controller's enabled flag to the next controller: true once any handle
+     * was released while still enabled, until a handle is released disabled again.
+     */
+    @Volatile var handoffEnabled: Boolean = false
+        private set
+
+    /** Handles that were released while still enabled (the next controller inherits "enabled"). */
+    val releasedWhileEnabled: MutableList<FakeEffectHandle> = CopyOnWriteArrayList()
+
     override fun create(session: Int, cfg: EqConfig): EffectHandle {
         createCalls += session
         failCreates?.let { throw EffectCreationException(it) }
-        return FakeEffectHandle(session, cfg).also { if (inheritedEnabled) it.setEnabled(true); handles += it }
+        val h = FakeEffectHandle(session, cfg) { enabledAtRelease, handle ->
+            handoffEnabled = enabledAtRelease
+            if (enabledAtRelease) releasedWhileEnabled += handle
+        }
+        if (inheritedEnabled || handoffEnabled) h.inheritEnabled(true)
+        handles += h
+        return h
     }
 }
 
-class FakeEffectHandle(val session: Int, initial: EqConfig) : EffectHandle {
-    var config: EqConfig = initial
+class FakeEffectHandle internal constructor(
+    val session: Int,
+    initial: EqConfig,
+    private val onReleased: (enabledAtRelease: Boolean, handle: FakeEffectHandle) -> Unit,
+) : EffectHandle {
+    constructor(session: Int, initial: EqConfig) : this(session, initial, { _, _ -> })
+
+    @Volatile var config: EqConfig = initial
         private set
-    val appliedConfigs: MutableList<EqConfig> = mutableListOf(initial)
+    val appliedConfigs: MutableList<EqConfig> = CopyOnWriteArrayList<EqConfig>().apply { add(initial) }
+
+    /** The enabled flag this handle had when it was released (AOSP hands it to the next controller). */
+    @Volatile var enabledAtRelease: Boolean? = null
+        private set
+
+    /** Models AOSP: a new controller starts with the previous controller's enabled flag. */
+    fun inheritEnabled(on: Boolean) {
+        enabled = on
+    }
 
     @Volatile var enabled: Boolean = false
         private set
@@ -82,13 +113,20 @@ class FakeEffectHandle(val session: Int, initial: EqConfig) : EffectHandle {
         enabled = on
     }
 
+    /** Like AOSP, keeps the enabled flag (it moves to the next controller); [released] excludes it from "active". */
     override fun release() {
+        if (released) return
+        enabledAtRelease = enabled
         released = true
-        enabled = false
+        onReleased(enabled, this)
     }
 
-    /** Simulates another EQ app taking over (SPEC trap 15). */
-    fun setControl(has: Boolean) {
+    /**
+     * Simulates another EQ app taking over (SPEC trap 15). On regain the enabled flag is whatever the other
+     * controller left ([enabledOnRegain], default: unchanged), as in AOSP.
+     */
+    fun setControl(has: Boolean, enabledOnRegain: Boolean? = null) {
+        if (has && !_control.value && enabledOnRegain != null) enabled = enabledOnRegain
         _control.value = has
     }
 }

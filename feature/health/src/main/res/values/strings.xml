@@ -10,7 +10,14 @@
     <string name="health_empty_title">No hearing test yet</string>
     <string name="health_empty_body">Take a hearing test with your headphones to see an estimated audiogram and summary here.</string>
 
-    <string name="health_test_info">Latest test: %1$s, %2$s mode</string>
+    <string name="health_unavailable_title">Can\'t show this test</string>
+    <string name="health_unavailable_test_missing">This test is no longer available.</string>
+    <string name="health_unavailable_profile_missing">This profile is no longer available.</string>
+    <string name="health_unavailable_incomplete">This test\'s data is incomplete, so it can\'t be shown.</string>
+    <string name="health_unavailable_error">Something went wrong while loading your results.</string>
+    <string name="health_show_latest">Show latest test</string>
+
+    <string name="health_test_info">Test from %1$s · %2$s</string>
     <string name="health_mode_quick">Quick</string>
     <string name="health_mode_thorough">Thorough</string>
 
@@ -24,6 +31,7 @@
     <string name="health_pta_value">About %1$s dB (estimated)</string>
     <string name="health_ehf_label">High-frequency average (10, 12.5 and 14 kHz)</string>
     <string name="health_ehf_value">About %1$s dB (estimated)</string>
+    <string name="health_ear_grade_note">The approximate grade below is based on your better ear, so it may not describe this ear.</string>
     <string name="health_ehf_explain">Shown as a number only. There is no grade for these very high pitches, and they naturally fade with age and noise exposure.</string>
     <string name="health_ehf_beyond_range">Some of these points are beyond the test range, so the real value may be higher.</string>
 
@@ -39,7 +47,7 @@
 
     <string name="health_asymmetry_title">Difference between ears</string>
     <string name="health_asymmetry_chip">Ears differ</string>
-    <string name="health_asymmetry_body">Your ears may differ by 15 dB or more across neighbouring frequencies. This can have many ordinary causes, such as earwax or headphone fit. If it persists, consider seeing an audiologist.</string>
+    <string name="health_asymmetry_body">Your ears may differ by 15 dB or more across neighboring frequencies. This can have many ordinary causes, such as earwax or headphone fit. If it persists, consider seeing an audiologist.</string>
 
     <string name="health_reliability_title">Reliability</string>
     <string name="health_reliability_chip">Less reliable</string>
@@ -64,7 +72,7 @@
     <string name="health_sheet_axes_body">Pitch runs from left to right, from 1 kHz to 14 kHz. Estimated level runs from top to bottom: points closer to the top mean you heard softer sounds, points lower down mean sounds had to be louder.</string>
     <string name="health_sheet_markers_title">Markers</string>
     <string name="health_sheet_markers_body">A red circle is your right ear and a blue cross is your left ear. A down arrow marks a point beyond test range: you did not hear it at the loudest level PAudio allows, so the real value may be higher. A dashed outline marks a point that was inconsistent between repeats.</string>
-    <string name="health_sheet_bands_title">Coloured bands</string>
+    <string name="health_sheet_bands_title">Colored bands</string>
     <string name="health_sheet_bands_body">The bands follow the WHO 2021 hearing grades. The grade shown is approximate: it comes from your better ear, uses 1, 2 and 4 kHz, and is estimated from phone and earphone playback.</string>
     <string name="health_sheet_limits_title">What this cannot show</string>
     <string name="health_sheet_limits_body">Phones and earphones cannot be calibrated like clinical equipment, so PAudio compares your ears and pitches with each other. Hearing loss that is the same at every pitch, or limited to low pitches, cannot be detected this way. A result in the normal range does not mean your hearing is fine.</string>

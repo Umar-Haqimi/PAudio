@@ -11,6 +11,8 @@ internal class FakePort(val cfg: EqConfig, val mbc: Boolean, inherited: Boolean,
     val bandWrites = CopyOnWriteArrayList<Triple<Int, Int, DpBand>>()
     val writeNanos = CopyOnWriteArrayList<Long>()
     val inputGainWrites = CopyOnWriteArrayList<Pair<Int, Float>>()
+    val enabledWrites = CopyOnWriteArrayList<Boolean>()
+    @Volatile var enabledAtRelease: Boolean? = null
     @Volatile var isOn = inherited
     @Volatile var control = true
     @Volatile var released = false
@@ -19,6 +21,7 @@ internal class FakePort(val cfg: EqConfig, val mbc: Boolean, inherited: Boolean,
 
     override fun setEnabled(on: Boolean) {
         if (!control) throw UnsupportedOperationException()
+        enabledWrites += on
         isOn = on
     }
 
@@ -48,6 +51,7 @@ internal class FakePort(val cfg: EqConfig, val mbc: Boolean, inherited: Boolean,
     }
 
     override fun release() {
+        enabledAtRelease = isOn
         released = true
     }
 }
