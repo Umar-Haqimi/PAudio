@@ -65,6 +65,7 @@ fun EqGraph(
     } else {
         stringResource(R.string.ds_eq_description_original)
     }
+    val khzShort = stringResource(R.string.ds_khz_short, "%1\$s")
     val leftName = stringResource(R.string.ds_ear_left)
     val rightName = stringResource(R.string.ds_ear_right)
     val khz = stringResource(R.string.ds_axis_frequency_hz)
@@ -95,7 +96,7 @@ fun EqGraph(
             for (hz in EqTicksHz) {
                 val xx = x(hz.toDouble())
                 drawLine(grid, Offset(xx, t), Offset(xx, b), 0.5.dp.toPx())
-                val text = if (hz >= 1000) formatNumber(hz / 1000.0, locale) + "k" else hz.toString()
+                val text = if (hz >= 1000) String.format(locale, khzShort, formatNumber(hz / 1000.0, locale)) else hz.toString()
                 val layout = measurer.measure(text, labelStyle)
                 drawText(layout, topLeft = Offset(xx - layout.size.width / 2f, b + 3.dp.toPx()))
             }
@@ -127,8 +128,8 @@ fun EqGraph(
             curve(leftDb, leftColor, dashed = false)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("— $leftName", color = leftColor, style = MaterialTheme.typography.labelLarge)
-            Text("- - $rightName", color = rightColor, style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(R.string.ds_eq_legend_left, leftName), color = leftColor, style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(R.string.ds_eq_legend_right, rightName), color = rightColor, style = MaterialTheme.typography.labelLarge)
         }
     }
 }

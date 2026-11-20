@@ -35,6 +35,6 @@ fun FrequencyWaveProgress(
         modifier = modifier.fillMaxWidth(),
         amplitude = { amplitude },
         wavelength = ChartMath.waveLengthDp(frequencyHz.toFloat()).dp,
-        waveSpeed = 24.dp,
+        waveSpeed = if (reduced || !stimulusPlaying) 0.dp else 24.dp,
     )
 }

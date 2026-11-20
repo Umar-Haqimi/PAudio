@@ -133,9 +133,7 @@ fun Audiogram(
     val locale = LocalConfiguration.current.locales[0]
     val measurer = rememberTextMeasurer()
     val bandTints = WhoBand.entries.map { it.tint() }
-    val bandNames = WhoBand.entries.map { it.label() }
     val labelStyle = MaterialTheme.typography.labelSmall.copy(color = scheme.onSurfaceVariant, fontSize = 10.sp)
-    val bandStyle = labelStyle.copy(color = scheme.onSurface.copy(alpha = 0.55f), fontSize = 9.sp)
     val axisFreq = stringResource(R.string.ds_axis_frequency_khz)
     val axisLevel = stringResource(R.string.ds_axis_level_db)
     val gridColor = scheme.outlineVariant.copy(alpha = 0.6f)
@@ -170,7 +168,6 @@ fun Audiogram(
                 val yTop = plot.y(band.fromDb.toFloat().coerceAtLeast(ChartMath.AUDIOGRAM_MIN_DB))
                 val yBottom = plot.y((band.toDb ?: 100).toFloat())
                 drawRect(bandTints[i], Offset(plot.left, yTop), Size(plot.right - plot.left, yBottom - yTop))
-                drawText(measurer, bandNames[i], Offset(plot.left + 4.dp.toPx(), yTop + 1.dp.toPx()), bandStyle)
             }
             // Horizontal grid: every 10 dB, labelled every 20.
             var db = -10

@@ -1,10 +1,15 @@
 package my.umarh.paudio.designsystem.chart
 
 import android.content.res.Configuration
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.geometry.Offset
@@ -20,17 +25,32 @@ import my.umarh.paudio.designsystem.PAudioTheme
 import java.text.NumberFormat
 import java.util.Locale
 
-/** True when the system animator duration scale is 0 (reduced motion): skip decorative animation. */
+/** True when the system animator duration scale is 0 (reduced motion); observed, so it updates live. */
 @Composable
 internal fun rememberReducedMotion(): Boolean {
     val context = LocalContext.current
-    return remember(context) {
-        try {
-            Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
-        } catch (_: Exception) {
-            false
-        }
+    fun read(): Boolean = try {
+        Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+    } catch (_: Exception) {
+        false
     }
+    val state = remember(context) { mutableStateOf(read()) }
+    DisposableEffect(context) {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                state.value = read()
+            }
+        }
+        try {
+            context.contentResolver.registerContentObserver(
+                Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE), false, observer,
+            )
+        } catch (_: Exception) {
+        }
+        state.value = read()
+        onDispose { context.contentResolver.unregisterContentObserver(observer) }
+    }
+    return state.value
 }
 
 /** Ear colours for charts: right = error-red (○), left = accessible blue (✕); never the only carrier of meaning. */

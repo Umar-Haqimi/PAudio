@@ -3,7 +3,8 @@ package my.umarh.paudio.designsystem.chart
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
@@ -54,7 +55,7 @@ fun HearingButterfly(
 ) {
     val scheme = MaterialTheme.colorScheme
     val reduced = rememberReducedMotion()
-    val progress = remember { Animatable(0f) }
+    val progress = remember { Animatable(if (animate && !reduced) 0f else 1f) }
     LaunchedEffect(leftHl, rightHl, frequenciesHz, animate, reduced) {
         if (animate && !reduced) {
             progress.snapTo(0f)
@@ -66,10 +67,10 @@ fun HearingButterfly(
     val measurer = rememberTextMeasurer()
     val locale = LocalConfiguration.current.locales[0]
     val labelStyle = MaterialTheme.typography.labelSmall.copy(color = scheme.onSurfaceVariant, fontSize = 10.sp)
-    val oneKLabel = stringResource(R.string.ds_khz_value, "1")
-    val topLabel = frequenciesHz.maxOrNull()?.let {
-        stringResource(R.string.ds_khz_value, formatNumber(it / 1000.0, locale))
-    } ?: ""
+    val minF = frequenciesHz.minOrNull()
+    val maxF = frequenciesHz.maxOrNull()
+    val minLabel = minF?.let { stringResource(R.string.ds_khz_value, formatNumber(it / 1000.0, locale)) } ?: ""
+    val maxLabel = maxF?.let { stringResource(R.string.ds_khz_value, formatNumber(it / 1000.0, locale)) } ?: ""
     val sizeModifier = if (mini) Modifier.size(88.dp, 112.dp) else Modifier.defaultMinSize(200.dp, 240.dp)
 
     val leftFill = scheme.primaryContainer.copy(alpha = 0.7f)
@@ -78,37 +79,58 @@ fun HearingButterfly(
     val rightLine = scheme.tertiary
     val axis = scheme.outlineVariant
 
-    Canvas(
+    Box(
         modifier
             .then(sizeModifier)
-            .semantics { this.contentDescription = contentDescription },
-    ) {
-        val padV = (if (mini) 6.dp else 20.dp).toPx()
-        val padH = (if (mini) 4.dp else 28.dp).toPx()
-        val cx = size.width / 2f
-        val top = padV
-        val bottom = size.height - padV
-        val halfW = (size.width / 2f - padH).coerceAtLeast(1f)
-        val axisStroke = 1.dp.toPx()
-
-        drawLine(axis, Offset(cx, top), Offset(cx, bottom), axisStroke)
-        if (!mini) {
-            drawText(measurer, oneKLabel, Offset(2.dp.toPx(), bottom - 6.dp.toPx()), labelStyle)
-            drawText(measurer, topLabel, Offset(2.dp.toPx(), top - 6.dp.toPx()), labelStyle)
-        }
-        val p = progress.value
-        drawWing(
-            hl = leftHl, freqs = frequenciesHz, censored = censoredLeft, sign = -1, cx = cx, halfW = halfW,
-            top = top, bottom = bottom, fill = leftFill, line = leftLine, progress = p, mini = mini,
-        )
-        drawWing(
-            hl = rightHl, freqs = frequenciesHz, censored = censoredRight, sign = 1, cx = cx, halfW = halfW,
-            top = top, bottom = bottom, fill = rightFill, line = rightLine, progress = p, mini = mini,
-        )
-    }
+            .semantics { this.contentDescription = contentDescription }
+            .drawWithCache {
+                // Geometry, paths and text layouts are rebuilt only when size or inputs change, not per frame.
+                val padV = (if (mini) 6.dp else 20.dp).toPx()
+                val padH = (if (mini) 4.dp else 28.dp).toPx()
+                val cx = size.width / 2f
+                val top = padV
+                val bottom = size.height - padV
+                val halfW = (size.width / 2f - padH).coerceAtLeast(1f)
+                val leftPts = butterflyWingPoints(leftHl, frequenciesHz, censoredLeft, -1, cx, halfW, top, bottom)
+                val rightPts = butterflyWingPoints(rightHl, frequenciesHz, censoredRight, 1, cx, halfW, top, bottom)
+                val leftPath = wingPath(leftPts, cx)
+                val rightPath = wingPath(rightPts, cx)
+                val leftMeasure = PathMeasure().apply { setPath(leftPath, false) }
+                val rightMeasure = PathMeasure().apply { setPath(rightPath, false) }
+                val leftLen = leftMeasure.length
+                val rightLen = rightMeasure.length
+                val trimmed = Path()
+                val minLayout = if (!mini && minF != null) measurer.measure(minLabel, labelStyle) else null
+                val maxLayout = if (!mini && maxF != null) measurer.measure(maxLabel, labelStyle) else null
+                val strokeW = (if (mini) 1.5.dp else 2.dp).toPx()
+                val ringR = 4.dp.toPx()
+                val ringW = 1.5.dp.toPx()
+                val axisW = 1.dp.toPx()
+                fun yOf(f: Int) = bottom - ChartMath.butterflyHeightFraction(f.toFloat()) * (bottom - top)
+                onDrawBehind {
+                    drawLine(axis, Offset(cx, top), Offset(cx, bottom), axisW)
+                    minLayout?.let { drawText(it, topLeft = Offset(2.dp.toPx(), yOf(minF!!) - it.size.height / 2f)) }
+                    maxLayout?.let { drawText(it, topLeft = Offset(2.dp.toPx(), yOf(maxF!!) - it.size.height / 2f)) }
+                    val p = progress.value
+                    fun wing(path: Path, measure: PathMeasure, len: Float, pts: List<WingPoint>, fill: Color, line: Color, hasWing: Boolean) {
+                        if (!hasWing) return
+                        drawPath(path, fill.copy(alpha = fill.alpha * p))
+                        trimmed.reset()
+                        measure.getSegment(0f, len * p, trimmed, true)
+                        drawPath(trimmed, line, style = Stroke(strokeW))
+                        if (!mini && p >= 1f) pts.forEach { if (it.censored) drawCircle(line, ringR, it.offset, style = Stroke(ringW)) }
+                    }
+                    wing(leftPath, leftMeasure, leftLen, leftPts, leftFill, leftLine, leftPts.size >= 2)
+                    wing(rightPath, rightMeasure, rightLen, rightPts, rightFill, rightLine, rightPts.size >= 2)
+                }
+            },
+    )
 }
 
-private fun DrawScope.drawWing(
+internal class WingPoint(val offset: Offset, val censored: Boolean)
+
+/** Wing edge points for one ear; [sign] = -1 for the left wing, +1 for the right (mirrored around [cx]). */
+internal fun butterflyWingPoints(
     hl: List<Float?>,
     freqs: List<Int>,
     censored: List<Boolean>,
@@ -117,35 +139,27 @@ private fun DrawScope.drawWing(
     halfW: Float,
     top: Float,
     bottom: Float,
-    fill: Color,
-    line: Color,
-    progress: Float,
-    mini: Boolean,
-) {
-    val pts = ArrayList<Offset>()
-    val censoredPts = ArrayList<Offset>()
+): List<WingPoint> {
+    val pts = ArrayList<WingPoint>()
     for (i in freqs.indices) {
         val v = hl.getOrNull(i) ?: continue
         val y = bottom - ChartMath.butterflyHeightFraction(freqs[i].toFloat()) * (bottom - top)
         val x = cx + sign * ChartMath.butterflyHalfWidthFraction(v) * halfW
-        pts += Offset(x, y)
-        if (censored.getOrNull(i) == true) censoredPts += Offset(x, y)
+        pts += WingPoint(Offset(x, y), censored.getOrNull(i) == true)
     }
-    if (pts.size < 2) return
-    val path = Path().apply {
-        moveTo(cx, pts.first().y)
-        lineTo(pts.first().x, pts.first().y)
-        catmullRomThrough(pts, moveToFirst = false)
-        lineTo(cx, pts.last().y)
+    return pts
+}
+
+private fun wingPath(pts: List<WingPoint>, cx: Float): Path {
+    val path = Path()
+    if (pts.size < 2) return path
+    val o = pts.map { it.offset }
+    path.apply {
+        moveTo(cx, o.first().y)
+        lineTo(o.first().x, o.first().y)
+        catmullRomThrough(o, moveToFirst = false)
+        lineTo(cx, o.last().y)
         close()
     }
-    drawPath(path, fill.copy(alpha = fill.alpha * progress))
-    val strokeW = (if (mini) 1.5.dp else 2.dp).toPx()
-    val measure = PathMeasure().apply { setPath(path, false) }
-    val trimmed = Path()
-    measure.getSegment(0f, measure.length * progress, trimmed, true)
-    drawPath(trimmed, line, style = Stroke(strokeW))
-    if (!mini && progress >= 1f) {
-        censoredPts.forEach { drawCircle(line, 4.dp.toPx(), it, style = Stroke(1.5.dp.toPx())) }
-    }
+    return path
 }

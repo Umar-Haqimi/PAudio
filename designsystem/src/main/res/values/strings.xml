@@ -11,6 +11,10 @@
     <string name="ds_axis_frequency_hz">Frequency (Hz)</string>
     <string name="ds_axis_gain_db">Gain (dB)</string>
 
+    <string name="ds_khz_short">%1$sk</string>
+    <string name="ds_eq_legend_left">— %1$s</string>
+    <string name="ds_eq_legend_right">- - %1$s</string>
+
     <!-- Hear button -->
     <string name="ds_hear_button_default_label">I heard it</string>
 

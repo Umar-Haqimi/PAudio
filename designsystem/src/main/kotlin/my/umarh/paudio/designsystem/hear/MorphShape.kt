@@ -10,14 +10,14 @@ import androidx.graphics.shapes.Cubic
 import androidx.graphics.shapes.Morph
 
 /**
- * Compose [Shape] drawing a graphics-shapes [Morph] at [progress] (0 = start polygon, 1 = end polygon; springs may
- * overshoot). Built on the stable `Morph.asCubics`, not on the experimental M3 `toPath`, and not on foundation's
- * `MorphPolygonShape` (which cannot take a `RoundedPolygon`). MaterialShapes polygons are normalised to the unit
- * square, so the path is simply scaled to the size.
+ * Compose [Shape] drawing a graphics-shapes [Morph] at a fixed [progress] (0 = start polygon, 1 = end polygon;
+ * springs may overshoot). Internal: graphics-shapes is an `implementation` dependency. Built on the stable
+ * `Morph.asCubics`; MaterialShapes polygons are normalised to the unit square so the path is scaled to the size.
+ * Create a new instance per progress value (e.g. inside `graphicsLayer {}`) so the layer re-resolves the outline.
  */
-class MorphShape(private val morph: Morph, private val progress: () -> Float) : Shape {
+internal class MorphShape(private val morph: Morph, private val progress: Float) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
-        Outline.Generic(morph.asCubics(progress()).toPath(size))
+        Outline.Generic(morph.asCubics(progress).toPath(size))
 }
 
 internal fun List<Cubic>.toPath(size: Size): Path {

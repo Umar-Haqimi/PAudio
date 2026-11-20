@@ -25,7 +25,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
@@ -67,13 +66,12 @@ fun MorphingHearButton(
     }
     val reduced = rememberReducedMotion()
     var pressed by remember { mutableStateOf(false) }
-    val morphProgress by animateFloatAsState(
+    val morphProgress = animateFloatAsState(
         targetValue = if (pressed && enabled) 1f else 0f,
         animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
         label = "hearMorph",
     )
-    val progressState = rememberUpdatedState(morphProgress)
-    val shape = remember { MorphShape(Morph(MaterialShapes.Cookie9Sided, MaterialShapes.Sunny)) { progressState.value } }
+    val morph = remember { Morph(MaterialShapes.Cookie9Sided, MaterialShapes.Sunny) }
 
     val pulsing = stimulusPlaying && !reduced && enabled
     val pulseAnim = remember { Animatable(0f) }
@@ -84,7 +82,6 @@ fun MorphingHearButton(
             pulseAnim.snapTo(0f)
         }
     }
-    val pulse = pulseAnim.value
     val currentOnPress by rememberUpdatedState(onPress)
     val scheme = MaterialTheme.colorScheme
     val container = if (enabled) scheme.primary else scheme.onSurface.copy(alpha = 0.12f)
@@ -95,13 +92,14 @@ fun MorphingHearButton(
             .size(176.dp)
             .then(modifier)
             .graphicsLayer {
-                val p = if (pulsing) pulse else 0f
+                // State reads here are observed by the layer: the outline is re-resolved every frame of the spring.
+                val p = if (pulsing) pulseAnim.value else 0f
                 val s = 1f + 0.06f * p
                 scaleX = s
                 scaleY = s
-                alpha = 1f - 0.12f * p
+                shape = MorphShape(morph, morphProgress.value)
+                clip = true
             }
-            .clip(shape)
             .background(container)
             .semantics(mergeDescendants = true) {
                 role = Role.Button
