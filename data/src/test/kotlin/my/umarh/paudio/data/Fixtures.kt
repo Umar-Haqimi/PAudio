@@ -22,10 +22,12 @@ import my.umarh.paudio.data.repo.ProfileWriteResult
 
 class Env(context: Context) {
     val db: PAudioDatabase =
-        Room.inMemoryDatabaseBuilder(context, PAudioDatabase::class.java).allowMainThreadQueries().build()
+        Room.inMemoryDatabaseBuilder(context, PAudioDatabase::class.java)
+            .addCallback(my.umarh.paudio.data.db.AnySlotIndexCallback).allowMainThreadQueries().build()
     val listeners = RoomListenerRepository(db)
     val headsets = RoomHeadsetRepository(db)
-    val profiles = RoomProfileRepository(db)
+    val settings = FakeSettings()
+    val profiles = RoomProfileRepository(db, settings)
     val tests = RoomHearingTestRepository(db)
     val prefs = RoomPreferenceTestRepository(db)
     fun close() = db.close()
@@ -79,4 +81,25 @@ suspend fun buildRichProfile(env: Env, listenerName: String = "Alice"): Long {
     env.tests.save(thoroughTest(p, 2_000, key), thresholds(), thoroughTrials())
     env.prefs.save(prefTest(p, 3_000))
     return p
+}
+
+class FakeSettings : my.umarh.paudio.data.settings.SettingsRepository {
+    val map = kotlinx.coroutines.flow.MutableStateFlow<Map<String, Long>>(emptyMap())
+    override val activeListenerId = kotlinx.coroutines.flow.MutableStateFlow<Long?>(null)
+    override val headsetProfiles = map
+    override val engineMode = kotlinx.coroutines.flow.MutableStateFlow(my.umarh.paudio.data.settings.EngineMode.SESSION)
+    override val startOnBoot = kotlinx.coroutines.flow.MutableStateFlow(false)
+    override val onboardingDone = kotlinx.coroutines.flow.MutableStateFlow(false)
+    override val defaultCompStrength = kotlinx.coroutines.flow.MutableStateFlow(0.5f)
+    override val personalizationEnabled = kotlinx.coroutines.flow.MutableStateFlow(true)
+    override suspend fun setActiveListenerId(id: Long?) { activeListenerId.value = id }
+    override suspend fun setHeadsetProfile(headsetKey: String, profileId: Long?) {
+        map.value = if (profileId == null) map.value - headsetKey else map.value + (headsetKey to profileId)
+    }
+    override suspend fun removeProfile(profileId: Long) { map.value = map.value.filterValues { it != profileId } }
+    override suspend fun setEngineMode(mode: my.umarh.paudio.data.settings.EngineMode) { engineMode.value = mode }
+    override suspend fun setStartOnBoot(enabled: Boolean) { startOnBoot.value = enabled }
+    override suspend fun setOnboardingDone(done: Boolean) { onboardingDone.value = done }
+    override suspend fun setDefaultCompStrength(strength: Float) { defaultCompStrength.value = strength }
+    override suspend fun setPersonalizationEnabled(enabled: Boolean) { personalizationEnabled.value = enabled }
 }

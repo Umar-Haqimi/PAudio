@@ -30,7 +30,7 @@ class TransferTest {
     @Test fun roundTripIntoFreshDatabaseIsLossless() = runTest {
         val p = buildRichProfile(a)
         val json1 = ProfileExporter(a.db).export(p)!!
-        val res = ProfileImporter(b.db).import(json1.toByteArray())
+        val res = ProfileImporter(b.db, b.settings).import(json1.toByteArray())
         assertThat(res).isInstanceOf(ImportResult.Success::class.java)
         val json2 = ProfileExporter(b.db).export((res as ImportResult.Success).profileId)!!
         assertThat(json2).isEqualTo(json1)
@@ -50,14 +50,14 @@ class TransferTest {
         val l = a.listeners.create("Zed")
         val p = a.profiles.ensureAnyHeadphonesProfile(l)
         val j1 = ProfileExporter(a.db).export(p)!!
-        val r = ProfileImporter(b.db).import(j1.toByteArray()) as ImportResult.Success
+        val r = ProfileImporter(b.db, b.settings).import(j1.toByteArray()) as ImportResult.Success
         assertThat(ProfileExporter(b.db).export(r.profileId)).isEqualTo(j1)
     }
 
     @Test fun conflictThenResolve() = runTest {
         val p = buildRichProfile(a)
         val json = ProfileExporter(a.db).export(p)!!.toByteArray()
-        val importer = ProfileImporter(a.db)
+        val importer = ProfileImporter(a.db, a.settings)
         val c = importer.import(json) as ImportResult.Conflict
         assertThat(c.existingProfileId).isEqualTo(p)
         assertThat(c.anySlot).isFalse()
@@ -79,12 +79,12 @@ class TransferTest {
         val p = buildRichProfile(a)
         val json = ProfileExporter(a.db).export(p)!!.toByteArray()
         b.listeners.create("Alice")
-        ProfileImporter(b.db).import(json)
+        ProfileImporter(b.db, b.settings).import(json)
         assertThat(b.listeners.observeAll().first()).hasSize(1)
     }
 
     @Test fun malformedInputNeverThrows() = runTest {
-        val imp = ProfileImporter(b.db)
+        val imp = ProfileImporter(b.db, b.settings)
         for (bad in listOf("", "{", "[]", "null", "{\"schemaVersion\":2}", "{\"schemaVersion\":1}")) {
             assertThat(imp.import(bad.toByteArray())).isInstanceOf(ImportResult.Error::class.java)
         }
@@ -97,11 +97,29 @@ class TransferTest {
     }
 
     @Test fun oversizedStreamRejected() = runTest {
-        val r = ProfileImporter(b.db).import(java.io.ByteArrayInputStream(ByteArray(3 * 1024 * 1024)))
+        val r = ProfileImporter(b.db, b.settings).import(java.io.ByteArrayInputStream(ByteArray(3 * 1024 * 1024)))
         assertThat((r as ImportResult.Error).reason).isEqualTo(ImportErrorReason.TOO_LARGE)
     }
 
     @Test fun createdProfileNotFoundExport() = runTest {
         assertThat(ProfileExporter(a.db).export(12345)).isNull()
+    }
+
+    @Test fun replaceImportPrunesSettingsMapping() = runTest {
+        val p = buildRichProfile(a)
+        a.settings.setHeadsetProfile("k", p)
+        val json = ProfileExporter(a.db).export(p)!!.toByteArray()
+        val r = ProfileImporter(a.db, a.settings).import(json, ConflictPolicy.REPLACE) as ImportResult.Success
+        assertThat(r.replacedProfileId).isEqualTo(p)
+        assertThat(a.settings.map.value).isEmpty()
+    }
+
+    @Test fun truncationDoesNotSplitSurrogatePairs() {
+        val name = "x".repeat(99) + "\uD83D\uDE00" // emoji straddles the 100-char limit
+        val f = FuzzSupport.validFile().let { it.copy(profile = it.profile.copy(name = name)) }
+        val v = my.umarh.paudio.data.transfer.ProfileImportValidator
+            .validate(my.umarh.paudio.core.model.ProfileJson.encode(f).toByteArray())
+            as my.umarh.paudio.data.transfer.ValidationResult.Valid
+        assertThat(v.file.profile.name).isEqualTo("x".repeat(99))
     }
 }

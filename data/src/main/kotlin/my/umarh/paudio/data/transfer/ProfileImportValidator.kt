@@ -49,6 +49,8 @@ object ProfileImportValidator {
         validateUnsafe(bytes)
     } catch (e: Exception) {
         ValidationResult.Invalid(ImportErrorReason.MALFORMED, e.javaClass.simpleName)
+    } catch (e: OutOfMemoryError) {
+        ValidationResult.Invalid(ImportErrorReason.TOO_LARGE, "out of memory")
     } catch (e: StackOverflowError) {
         ValidationResult.Invalid(ImportErrorReason.TOO_DEEP, "stack overflow")
     }
@@ -94,6 +96,12 @@ object ProfileImportValidator {
         return max
     }
 
+    /** Truncates without splitting a surrogate pair. */
+    private fun String.safeTake(n: Int): String {
+        if (length <= n) return this
+        return if (n > 0 && this[n - 1].isHighSurrogate()) substring(0, n - 1) else substring(0, n)
+    }
+
     private fun bad(reason: ImportErrorReason, detail: String) = ValidationResult.Invalid(reason, detail)
 
     private class Reject(val reason: ImportErrorReason, val detail: String) : Exception(detail, null, false, false)
@@ -112,7 +120,7 @@ object ProfileImportValidator {
     private fun name(s: String, what: String): String {
         val t = s.trim()
         if (t.isEmpty()) fail("$what blank")
-        return t.take(MAX_NAME)
+        return t.safeTake(MAX_NAME)
     }
 
     private fun sanitize(file: ProfileFile): ValidationResult = try {
@@ -137,13 +145,13 @@ object ProfileImportValidator {
     }
 
     private fun headset(h: HeadsetJson): HeadsetJson {
-        val product = h.productName.trim().take(MAX_TEXT)
-        val suffix = h.addressSuffix.take(MAX_TEXT)
+        val product = h.productName.trim().safeTake(MAX_TEXT)
+        val suffix = h.addressSuffix.safeTake(MAX_TEXT)
         // The stored key is never trusted: recompute from the fields.
         val key = HeadsetKey.of(h.type, product, suffix).value
         return h.copy(
             key = key,
-            displayName = h.displayName.take(MAX_TEXT),
+            displayName = h.displayName.safeTake(MAX_TEXT),
             productName = product,
             addressSuffix = suffix,
             createdAt = h.createdAt.coerceAtLeast(0),
@@ -172,7 +180,7 @@ object ProfileImportValidator {
             volIndex = t.volIndex.coerceIn(0, 1000),
             volMax = t.volMax.coerceIn(0, 1000),
             lRef = level(t.lRef, "lRef"),
-            appVersion = t.appVersion.take(64),
+            appVersion = t.appVersion.safeTake(64),
             algoVersion = t.algoVersion.coerceIn(0, 1_000_000),
             fpRate = clampOpt(t.fpRate, 0f, 1f, "fpRate"),
             thresholds = ths,

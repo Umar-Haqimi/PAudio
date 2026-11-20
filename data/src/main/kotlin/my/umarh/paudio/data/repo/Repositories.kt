@@ -97,11 +97,16 @@ interface ProfileRepository {
 }
 
 interface HearingTestRepository {
-    /** Saves test + thresholds + trials atomically; ids/testId in the arguments are overwritten. */
+    /**
+     * Saves test + thresholds + trials atomically; ids/testId in the arguments are overwritten.
+     * Pass the headset the test was taken on as [headsetKey]: it is stamped into deviceSnapshotJson
+     * (see DeviceSnapshot) so trends stay correct if the profile is later moved to another headset.
+     */
     suspend fun save(
         test: HearingTestEntity,
         thresholds: List<ThresholdEntity>,
         trials: List<TrialEntity> = emptyList(),
+        headsetKey: HeadsetKey? = null,
     ): Long
 
     fun observeForProfile(profileId: Long): Flow<List<HearingTestEntity>>

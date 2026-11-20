@@ -2,6 +2,7 @@ package my.umarh.paudio.data.transfer
 
 import androidx.room.withTransaction
 import java.io.InputStream
+import kotlin.coroutines.cancellation.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.serialization.json.JsonElement
@@ -23,6 +24,7 @@ import my.umarh.paudio.data.db.PreferenceTestEntity
 import my.umarh.paudio.data.db.ProfileEntity
 import my.umarh.paudio.data.db.ThresholdEntity
 import my.umarh.paudio.data.db.TrialEntity
+import my.umarh.paudio.data.settings.SettingsRepository
 
 /** Exports one profile as schema-v1 JSON with deterministic ordering (tests by startedAt/id, thresholds by ear/freq, trials by seq). */
 @Singleton
@@ -69,7 +71,7 @@ class ProfileExporter @Inject constructor(private val db: PAudioDatabase) {
 }
 
 sealed interface ImportResult {
-    data class Success(val profileId: Long) : ImportResult
+    data class Success(val profileId: Long, val replacedProfileId: Long? = null) : ImportResult
 
     /**
      * The target slot already holds [existingProfileId]. Nothing was written. The UI resolves it by calling
@@ -105,7 +107,10 @@ enum class ConflictPolicy {
  * key, else created. Never throws on malformed input.
  */
 @Singleton
-class ProfileImporter @Inject constructor(private val db: PAudioDatabase) {
+class ProfileImporter @Inject constructor(
+    private val db: PAudioDatabase,
+    private val settings: SettingsRepository,
+) {
 
     suspend fun import(input: InputStream, policy: ConflictPolicy = ConflictPolicy.ASK): ImportResult {
         val bytes = try {
@@ -119,6 +124,8 @@ class ProfileImporter @Inject constructor(private val db: PAudioDatabase) {
                 }
                 out.toByteArray()
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             return ImportResult.Error(ImportErrorReason.IO, e.javaClass.simpleName)
         }
@@ -130,8 +137,11 @@ class ProfileImporter @Inject constructor(private val db: PAudioDatabase) {
             is ValidationResult.Invalid -> ImportResult.Error(v.reason, v.detail)
             is ValidationResult.Valid -> try {
                 store(v.file, policy)
+                    .also { r -> if (r is ImportResult.Success) r.replacedProfileId?.let { settings.removeProfile(it) } }
             } catch (c: ConflictSignal) {
                 c.result
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 ImportResult.Error(ImportErrorReason.STORAGE, e.javaClass.simpleName)
             }
@@ -155,6 +165,7 @@ class ProfileImporter @Inject constructor(private val db: PAudioDatabase) {
                 )
             }
         }
+        var replaced: Long? = null
         val existing = profileDao.getForSlot(listenerId, headsetId)
         if (existing != null) {
             val replace = policy == ConflictPolicy.REPLACE || policy == ConflictPolicy.REPLACE_ANY
@@ -163,6 +174,7 @@ class ProfileImporter @Inject constructor(private val db: PAudioDatabase) {
                 throw ConflictSignal(ImportResult.Conflict(existing.id, existing.name, headsetId == null))
             }
             profileDao.delete(existing.id)
+            replaced = existing.id
         }
         val s = f.profile
         val profileId = profileDao.insert(
@@ -197,7 +209,7 @@ class ProfileImporter @Inject constructor(private val db: PAudioDatabase) {
                 ),
             )
         }
-        ImportResult.Success(profileId)
+        ImportResult.Success(profileId, replaced)
     }
 }
 

@@ -17,6 +17,7 @@ import my.umarh.paudio.data.db.PreferenceTestEntity
 import my.umarh.paudio.data.db.ProfileEntity
 import my.umarh.paudio.data.db.ThresholdEntity
 import my.umarh.paudio.data.db.TrialEntity
+import my.umarh.paudio.data.settings.SettingsRepository
 
 @Singleton
 class RoomListenerRepository @Inject constructor(private val db: PAudioDatabase) : ListenerRepository {
@@ -60,7 +61,10 @@ class RoomHeadsetRepository @Inject constructor(private val db: PAudioDatabase) 
 }
 
 @Singleton
-class RoomProfileRepository @Inject constructor(private val db: PAudioDatabase) : ProfileRepository {
+class RoomProfileRepository @Inject constructor(
+    private val db: PAudioDatabase,
+    private val settings: SettingsRepository,
+) : ProfileRepository {
     private val profiles get() = db.profileDao()
     private val tests get() = db.hearingTestDao()
     private val prefs get() = db.preferenceTestDao()
@@ -106,22 +110,19 @@ class RoomProfileRepository @Inject constructor(private val db: PAudioDatabase) 
     override suspend fun rename(profileId: Long, name: String) =
         profiles.rename(profileId, name.trim(), System.currentTimeMillis())
 
-    override suspend fun updateSettings(profileId: Long, settings: ProfileSettings) {
-        val p = profiles.get(profileId) ?: return
-        profiles.update(
-            p.copy(
-                compStrength = settings.compStrength, gB = settings.gB, gP = settings.gP, gT = settings.gT,
-                personalizationOn = settings.personalizationOn, updatedAt = System.currentTimeMillis(),
-            ),
-        )
-    }
+    // Targeted UPDATEs (no read-modify-write): a concurrent moveToHeadset cannot be overwritten.
+    override suspend fun updateSettings(profileId: Long, settings: ProfileSettings) = profiles.updateSettings(
+        profileId, settings.compStrength, settings.gB, settings.gP, settings.gT, settings.personalizationOn,
+        System.currentTimeMillis(),
+    )
 
-    override suspend fun setSeedColor(profileId: Long, seedColor: Int?, overridden: Boolean) {
-        val p = profiles.get(profileId) ?: return
-        profiles.update(p.copy(seedColor = seedColor, seedOverridden = overridden, updatedAt = System.currentTimeMillis()))
-    }
+    override suspend fun setSeedColor(profileId: Long, seedColor: Int?, overridden: Boolean) =
+        profiles.updateSeed(profileId, seedColor, overridden, System.currentTimeMillis())
 
-    override suspend fun delete(profileId: Long) = profiles.delete(profileId)
+    override suspend fun delete(profileId: Long) {
+        profiles.delete(profileId)
+        settings.removeProfile(profileId)
+    }
 
     override suspend fun duplicate(profileId: Long, newName: String, target: ProfileSlot): ProfileWriteResult =
         db.withTransaction {
@@ -168,9 +169,19 @@ class RoomProfileRepository @Inject constructor(private val db: PAudioDatabase) 
 class RoomHearingTestRepository @Inject constructor(private val db: PAudioDatabase) : HearingTestRepository {
     private val dao get() = db.hearingTestDao()
 
-    override suspend fun save(test: HearingTestEntity, thresholds: List<ThresholdEntity>, trials: List<TrialEntity>): Long =
+    override suspend fun save(
+        test: HearingTestEntity,
+        thresholds: List<ThresholdEntity>,
+        trials: List<TrialEntity>,
+        headsetKey: HeadsetKey?,
+    ): Long =
         db.withTransaction {
-            val id = dao.insertTest(test.copy(id = 0))
+            val snapshot = if (headsetKey != null) {
+                DeviceSnapshot.withHeadsetKey(test.deviceSnapshotJson, headsetKey.value)
+            } else {
+                test.deviceSnapshotJson
+            }
+            val id = dao.insertTest(test.copy(id = 0, deviceSnapshotJson = snapshot))
             dao.insertThresholds(thresholds.map { it.copy(testId = id) })
             dao.insertTrials(trials.map { it.copy(testId = id) })
             id

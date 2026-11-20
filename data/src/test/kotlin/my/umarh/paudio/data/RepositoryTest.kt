@@ -147,4 +147,63 @@ class RepositoryTest {
         val id = env.headsets.getOrCreate(OutputDevice(OutputDeviceType.BLUETOOTH_A2DP, " X ", "11:22:33:ab:cd"))
         assertThat(env.headsets.getByKey(HeadsetKey("BLUETOOTH_A2DP|X|AB:CD"))?.id).isEqualTo(id)
     }
+
+    @Test fun updateSettingsDoesNotClobberConcurrentMove() = runTest {
+        val l = env.listeners.create("A")
+        val h = env.headsets.getOrCreate(WIRED)
+        val p = (env.profiles.create(l, h, "p") as ProfileWriteResult.Ok).profileId
+        val stale = env.profiles.get(p)!!.profile // what a read-modify-write would have held
+        env.profiles.moveToHeadset(p, null)
+        env.profiles.updateSettings(p, my.umarh.paudio.data.repo.ProfileSettings(0.9f, 1f, 2f, 3f, false))
+        env.profiles.setSeedColor(p, 42, true)
+        val now = env.profiles.get(p)!!.profile
+        assertThat(stale.headsetId).isEqualTo(h)
+        assertThat(now.headsetId).isNull()
+        assertThat(now.compStrength).isEqualTo(0.9f)
+        assertThat(now.personalizationOn).isFalse()
+        assertThat(now.seedColor).isEqualTo(42)
+        assertThat(now.seedOverridden).isTrue()
+        // the Any slot is still single
+        assertThat(env.profiles.create(l, null, "again")).isEqualTo(ProfileWriteResult.Conflict(p))
+    }
+
+    @Test fun dbBackstopRejectsSecondAnyProfileAndSchemaValidationTolerates() = runTest {
+        val l = env.listeners.create("A")
+        env.profiles.ensureAnyHeadphonesProfile(l)
+        val sql = env.db.openHelper.writableDatabase
+        val r = runCatching {
+            sql.execSQL("INSERT INTO profile (listenerId, headsetId, name, compStrength, gB, gP, gT, personalizationOn, seedOverridden, createdAt, updatedAt) VALUES ($l, NULL, 'dup', 0.5, 0, 0, 0, 1, 0, 0, 0)")
+        }
+        assertThat(r.exceptionOrNull()).isInstanceOf(android.database.sqlite.SQLiteConstraintException::class.java)
+    }
+
+    @Test fun backstopSurvivesReopenWithRoomSchemaValidation() {
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val name = "reopen-test.db"
+        ctx.deleteDatabase(name)
+        fun open() = androidx.room.Room.databaseBuilder(ctx, my.umarh.paudio.data.db.PAudioDatabase::class.java, name)
+            .addCallback(my.umarh.paudio.data.db.AnySlotIndexCallback).allowMainThreadQueries().build()
+        val first = open()
+        first.openHelper.writableDatabase.close()
+        first.close()
+        val second = open() // identity-hash validation must accept the extra index
+        val c = second.openHelper.writableDatabase.query("SELECT name FROM sqlite_master WHERE name = 'idx_profile_any_slot'")
+        assertThat(c.count).isEqualTo(1)
+        c.close(); second.close(); ctx.deleteDatabase(name)
+    }
+
+    @Test fun deleteProfilePrunesSettingsMapping() = runTest {
+        val l = env.listeners.create("A")
+        val p = env.profiles.ensureAnyHeadphonesProfile(l)
+        env.settings.setHeadsetProfile("k", p)
+        env.profiles.delete(p)
+        assertThat(env.settings.map.value).isEmpty()
+    }
+
+    @Test fun saveStampsHeadsetKey() = runTest {
+        val p = buildRichProfile(env)
+        val id = env.tests.save(quickTest(p, 7_000, null), thresholds(), emptyList(), WIRED.headsetKey)
+        assertThat(my.umarh.paudio.data.db.DeviceSnapshot.headsetKeyOf(env.tests.get(id)!!.deviceSnapshotJson))
+            .isEqualTo(WIRED.headsetKey.value)
+    }
 }

@@ -30,6 +30,8 @@ interface SettingsRepository {
 
     suspend fun setActiveListenerId(id: Long?)
     suspend fun setHeadsetProfile(headsetKey: String, profileId: Long?)
+    /** Removes every headsetKey -> profile entry pointing at [profileId] (called when a profile is deleted). */
+    suspend fun removeProfile(profileId: Long)
     suspend fun setEngineMode(mode: EngineMode)
     suspend fun setStartOnBoot(enabled: Boolean)
     suspend fun setOnboardingDone(done: Boolean)
@@ -70,6 +72,16 @@ class DataStoreSettingsRepository @Inject constructor(
             val map = decodeMap(it[Keys.headsetProfiles]).toMutableMap()
             if (profileId == null) map.remove(headsetKey) else map[headsetKey] = profileId
             it[Keys.headsetProfiles] = JsonObject(map.mapValues { e -> JsonPrimitive(e.value) }).toString()
+        }
+    }
+
+    override suspend fun removeProfile(profileId: Long) {
+        store.edit {
+            val map = decodeMap(it[Keys.headsetProfiles])
+            if (map.containsValue(profileId)) {
+                it[Keys.headsetProfiles] =
+                    JsonObject(map.filterValues { v -> v != profileId }.mapValues { e -> JsonPrimitive(e.value) }).toString()
+            }
         }
     }
 

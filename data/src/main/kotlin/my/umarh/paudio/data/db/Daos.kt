@@ -45,6 +45,17 @@ interface ProfileDao {
     )
     suspend fun getForHeadsetKey(listenerId: Long, key: String): ProfileEntity?
 
+    @Query(
+        "UPDATE profile SET compStrength = :compStrength, gB = :gB, gP = :gP, gT = :gT, " +
+            "personalizationOn = :personalizationOn, updatedAt = :now WHERE id = :id",
+    )
+    suspend fun updateSettings(
+        id: Long, compStrength: Float, gB: Float, gP: Float, gT: Float, personalizationOn: Boolean, now: Long,
+    )
+
+    @Query("UPDATE profile SET seedColor = :seedColor, seedOverridden = :overridden, updatedAt = :now WHERE id = :id")
+    suspend fun updateSeed(id: Long, seedColor: Int?, overridden: Boolean, now: Long)
+
     @Query("UPDATE profile SET name = :name, updatedAt = :now WHERE id = :id")
     suspend fun rename(id: Long, name: String, now: Long)
 }

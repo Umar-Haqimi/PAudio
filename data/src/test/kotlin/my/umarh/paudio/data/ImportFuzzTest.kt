@@ -234,7 +234,7 @@ class ImportFuzzEndToEndTest {
     @Test fun threeHundredMutationsThroughRoom() = runTest {
         val env = Env(ApplicationProvider.getApplicationContext())
         try {
-            val importer = ProfileImporter(env.db)
+            val importer = ProfileImporter(env.db, env.settings)
             val r = Random(777)
             var ok = 0
             repeat(300) {

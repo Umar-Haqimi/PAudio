@@ -36,7 +36,9 @@ object DataProvidesModule {
     @Provides
     @Singleton
     fun database(@ApplicationContext context: Context): PAudioDatabase =
-        Room.databaseBuilder(context, PAudioDatabase::class.java, PAudioDatabase.NAME).build()
+        Room.databaseBuilder(context, PAudioDatabase::class.java, PAudioDatabase.NAME)
+            .addCallback(my.umarh.paudio.data.db.AnySlotIndexCallback)
+            .build()
 
     @Provides fun listenerDao(db: PAudioDatabase) = db.listenerDao()
     @Provides fun headsetDao(db: PAudioDatabase) = db.headsetDao()
