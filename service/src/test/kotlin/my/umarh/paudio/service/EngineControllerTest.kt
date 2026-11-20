@@ -279,7 +279,7 @@ class EngineControllerTest {
             val resolver = ActiveProfileResolver(store.devices, store.settings, store.profiles, ctrlScope)
             val controller = EngineController(
                 engine, resolver, curves, store.settings, store.profiles, FakeLauncher(), store.flags,
-                { 48_000 }, { true }, FakeSink(), ctrlScope,
+                { 48_000 }, { true }, FakeSink(), ServiceFaults(), ctrlScope,
             )
             controller.onServiceStarted()
             val btCfg = curves.config(store.profiles.profile(1)!!, curves.loadSource(1), 48_000, DpLadderStep.MAIN)

@@ -31,6 +31,7 @@
     <string name="service_status_speaker">Speaker output (not processed)</string>
     <string name="service_status_error_creation">This device\'s audio system refused PAudio\'s effect. Try Legacy mode in Settings.</string>
     <string name="service_status_error_source">PAudio could not listen for music apps. Turn PAudio off and on again, or try Legacy mode in Settings.</string>
+    <string name="service_status_fault">PAudio hit a problem and is retrying…</string>
     <string name="service_hint_no_session">Your music app isn\'t announcing itself. Try Legacy mode, or check the compatibility list.</string>
 
     <!-- Notification permission (SPEC §4 item 8) -->
@@ -44,6 +45,7 @@
     <string name="service_headset_title">New headphones</string>
     <string name="service_headset_text">These headphones don\'t have a PAudio profile yet.</string>
     <string name="service_headset_action_create">Create profile</string>
+    <string name="service_headset_action_ignore">Don\'t ask for this device</string>
     <string name="service_headset_action_use">Use %1$s</string>
 
     <!-- Wired key collision (SPEC §5.5); the dialog itself is built by the Home/Profiles UI -->

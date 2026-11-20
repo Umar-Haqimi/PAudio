@@ -67,6 +67,8 @@ data class NotificationModel(
     val state: EngineState,
     val noSessionHint: Boolean,
     val personalized: Boolean?,
+    /** An unexpected failure is being retried: shown instead of the (possibly stale) engine state. */
+    val fault: Boolean = false,
 )
 
 /** Posts the unknown-headset prompt (F17). */
@@ -88,7 +90,11 @@ class NotificationPoster @Inject constructor(
 
     private val nm: NotificationManager get() = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
+    private var channelsCreated = false
+
     fun ensureChannels() {
+        if (channelsCreated) return
+        channelsCreated = true
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_ENGINE, context.getString(R.string.service_channel_engine_name), NotificationManager.IMPORTANCE_LOW)
                 .apply {
@@ -111,8 +117,12 @@ class NotificationPoster @Inject constructor(
 
     fun engineNotification(model: NotificationModel): Notification {
         ensureChannels()
-        val status = EngineStatus.textOf(model.state, labels::labelOf).format(context)
-        val hint = EngineStatus.hintOf(model.state, model.noSessionHint)?.format(context)
+        val status = if (model.fault) {
+            context.getString(R.string.service_status_fault)
+        } else {
+            EngineStatus.textOf(model.state, labels::labelOf).format(context)
+        }
+        val hint = if (model.fault) null else EngineStatus.hintOf(model.state, model.noSessionHint)?.format(context)
         val title = context.getString(
             when (model.personalized) {
                 true -> R.string.service_notification_title_personalized
@@ -179,6 +189,14 @@ class NotificationPoster @Inject constructor(
             .setAutoCancel(true)
             .setContentIntent(activity(REQ_CREATE, create))
             .addAction(0, context.getString(R.string.service_headset_action_create), activity(REQ_CREATE_ACTION, create))
+        val ignore = Intent(context, NotificationActionReceiver::class.java)
+            .setAction(ServiceIntents.ACTION_IGNORE_HEADSET)
+            .putExtra(ServiceIntents.EXTRA_HEADSET_KEY, headsetKey)
+        builder.addAction(
+            0,
+            context.getString(R.string.service_headset_action_ignore),
+            PendingIntent.getBroadcast(context, REQ_IGNORE, ignore, IMMUTABLE_UPDATE),
+        )
         if (anyHeadphones != null) {
             val use = Intent(context, NotificationActionReceiver::class.java)
                 .setAction(ServiceIntents.ACTION_USE_PROFILE)
@@ -201,6 +219,8 @@ class NotificationPoster @Inject constructor(
 
     private fun launchIntent(route: String?): Intent? =
         context.packageManager.getLaunchIntentForPackage(context.packageName)?.also {
+            // Deliver to the running activity (onNewIntent) instead of dropping the tap.
+            it.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             if (route != null) it.putExtra(ServiceIntents.EXTRA_ROUTE, route)
         }
 
@@ -231,6 +251,7 @@ class NotificationPoster @Inject constructor(
         private const val REQ_CREATE = 15
         private const val REQ_CREATE_ACTION = 16
         private const val REQ_USE = 17
+        private const val REQ_IGNORE = 18
         private const val IMMUTABLE_UPDATE = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     }
 }
@@ -240,8 +261,15 @@ class NotificationPoster @Inject constructor(
 class NotificationActionHandler @Inject constructor(
     private val resolver: ActiveProfileResolver,
     private val prompts: HeadsetPromptSink,
+    private val flags: ServiceFlags,
 ) {
     suspend fun handle(intent: Intent) {
+        if (intent.action == ServiceIntents.ACTION_IGNORE_HEADSET) {
+            val key = intent.getStringExtra(ServiceIntents.EXTRA_HEADSET_KEY) ?: return
+            flags.ignoredHeadsetKeys = flags.ignoredHeadsetKeys + key
+            prompts.clear()
+            return
+        }
         if (intent.action != ServiceIntents.ACTION_USE_PROFILE) return
         val key = intent.getStringExtra(ServiceIntents.EXTRA_HEADSET_KEY) ?: return
         val id = intent.getLongExtra(ServiceIntents.EXTRA_PROFILE_ID, -1L).takeIf { it >= 0 } ?: return

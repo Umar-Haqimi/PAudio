@@ -26,7 +26,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        handleLaunch(intent)
+        // A recreated activity (rotation, restore from recents after process death) still carries the original
+        // notification extras: replaying them would e.g. clear "the user turned PAudio off".
+        val replay = savedInstanceState != null || (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+        if (!replay) handleLaunch(intent)
         setContent {
             // TODO(M8): pass the active profile's seed colour.
             PAudioTheme {
@@ -50,7 +53,11 @@ class MainActivity : ComponentActivity() {
 
     /** Notification deep links: "Tap to start PAudio" starts the engine; other routes are left for the nav (M8b). */
     private fun handleLaunch(intent: Intent?) {
-        when (launchRequests.offer(intent)) {
+        val route = launchRequests.offer(intent)
+        // One-shot: drop the extra so a later recreation cannot replay it.
+        intent?.removeExtra(ServiceIntents.EXTRA_ROUTE)
+        intent?.let { setIntent(it) }
+        when (route) {
             ServiceIntents.ROUTE_START_SERVICE -> {
                 engineController.start()
                 launchRequests.consume()

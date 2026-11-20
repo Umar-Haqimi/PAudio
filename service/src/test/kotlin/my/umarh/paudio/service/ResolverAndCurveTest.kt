@@ -2,6 +2,7 @@ package my.umarh.paudio.service
 
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import my.umarh.paudio.audio.effect.toEqConfig
 import my.umarh.paudio.core.dsp.DpEqPlanner
@@ -53,21 +54,32 @@ class ResolverAndCurveTest {
         assertThat(ActiveProfileResolver.resolveProfile(BT, 1, emptyMap(), emptyList())).isEqualTo(ActiveProfile.NoProfile(BT, null))
     }
 
+    private fun addSecondListenerOnTheSameJack(store: Store) {
+        val second = ListenerProfiles(
+            listener(2),
+            listOf(ProfileWithHeadset(profile(4, 2, "Wired (second listener)").copy(listenerId = 2), wired)),
+        )
+        store.profiles.listeners.value = store.profiles.listeners.value + second
+    }
+
     @Test
-    fun wiredCollisionQuestionIsAskedOnConnectAndRememberedUntilDisconnect() = runTest {
+    fun wiredCollisionQuestionIsAskedOnlyForARealKeyCollision() = runTest {
         val r = Rig(this)
         r.store.seedStandard()
+        addSecondListenerOnTheSameJack(r.store)
         assertThat(r.resolver.pendingQuestion.value).isNull() // BT at start
 
         r.store.devices.set(WIRED)
         val q = r.resolver.pendingQuestion.value!!
-        assertThat(q.candidates.map { it.id }).containsExactly(2L, 3L)
-        // Meanwhile the default (headset-bound) profile already applies: the question never blocks audio.
+        assertThat(q.candidates.map { it.id }).containsExactly(2L, 4L)
+        // Meanwhile the active listener's own profile applies: the question never blocks audio.
         assertThat((r.resolver.activeProfile.value as ActiveProfile.Resolved).profile.id).isEqualTo(2)
 
-        r.resolver.answerWhichHeadphones(3)
+        r.resolver.answerWhichHeadphones(4)
         assertThat(r.resolver.pendingQuestion.value).isNull()
-        assertThat((r.resolver.activeProfile.value as ActiveProfile.Resolved).profile.id).isEqualTo(3)
+        val resolved = r.resolver.activeProfile.value as ActiveProfile.Resolved
+        assertThat(resolved.profile.id).isEqualTo(4)
+        assertThat(resolved.listener.id).isEqualTo(2)
 
         r.store.devices.set(SPEAKER)
         r.store.devices.set(WIRED) // reconnect: asked again, answer forgotten
@@ -78,17 +90,41 @@ class ResolverAndCurveTest {
     }
 
     @Test
+    fun anyPlusOneWiredProfileNeverAsks() = runTest {
+        val r = Rig(this)
+        r.store.seedStandard() // Any + one wired + one BT profile: the normal setup
+        r.store.devices.set(WIRED)
+        r.store.devices.set(SPEAKER)
+        r.store.devices.set(WIRED)
+        assertThat(r.resolver.pendingQuestion.value).isNull()
+    }
+
+    @Test
     fun noQuestionWhenWiredIsAlreadyConnectedAtStartOrForBluetooth() = runTest {
         val r = Rig(this)
         r.store.seedStandard()
+        addSecondListenerOnTheSameJack(r.store)
         r.store.devices.set(WIRED)
+        r.resolver.answerWhichHeadphones(null)
         r.store.devices.set(BT)
         assertThat(r.resolver.pendingQuestion.value).isNull()
-        val r2 = Rig(this)
-        r2.store.seedStandard()
-        r2.store.devices.set(WIRED)
+        val r2 = Rig(this, Store().also { it.seedStandard(); addSecondListenerOnTheSameJack(it); it.devices.set(WIRED) })
         r2.store.devices.set(SPEAKER)
         assertThat(r2.resolver.pendingQuestion.value).isNull()
+    }
+
+    @Test
+    fun curveUsesTheNewestCompleteTestNotAnIncompleteNewerOne() = runTest {
+        val store = Store().also { it.seedStandard() }
+        val svc = ProfileCurveService(store.tests)
+        val complete = svc.loadSource(1)!!
+        assertThat(complete.testId).isEqualTo(11)
+        store.tests.put(testEntity(30, 1), thresholdsFor(30, 40f).drop(4)) // newer but incomplete
+        assertThat(svc.loadSource(1)!!.testId).isEqualTo(11)
+        assertThat(svc.observeSource(1).first()!!.testId).isEqualTo(11)
+        store.tests.put(testEntity(31, 1), thresholdsFor(31, 40f)) // newer and complete
+        assertThat(svc.loadSource(1)!!.testId).isEqualTo(31)
+        assertThat(svc.observeSource(1).first()!!.testId).isEqualTo(31)
     }
 
     @Test
@@ -145,8 +181,8 @@ class ResolverAndCurveTest {
     @Test
     fun incompleteTestsAreIgnored() = runTest {
         val store = Store().also { it.seedStandard() }
-        store.tests.put(testEntity(20, 1), thresholdsFor(20, 10f).drop(3))
+        store.tests.put(testEntity(20, 3), thresholdsFor(20, 10f).drop(3))
         val svc = ProfileCurveService(store.tests)
-        assertThat(svc.loadSource(1)).isNull()
+        assertThat(svc.loadSource(3)).isNull()
     }
 }

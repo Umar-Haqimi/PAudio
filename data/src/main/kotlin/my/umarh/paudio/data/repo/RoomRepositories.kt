@@ -116,6 +116,9 @@ class RoomProfileRepository @Inject constructor(
         System.currentTimeMillis(),
     )
 
+    override suspend fun setPersonalization(profileId: Long, on: Boolean) =
+        profiles.setPersonalization(profileId, on, System.currentTimeMillis())
+
     override suspend fun setSeedColor(profileId: Long, seedColor: Int?, overridden: Boolean) =
         profiles.updateSeed(profileId, seedColor, overridden, System.currentTimeMillis())
 

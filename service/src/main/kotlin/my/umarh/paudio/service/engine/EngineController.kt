@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.distinctUntilChangedBy
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterIsInstance
@@ -21,18 +20,25 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.retryWhen
 import my.umarh.paudio.audio.effect.EffectEngine
 import my.umarh.paudio.audio.effect.EngineDiagnostics
 import my.umarh.paudio.audio.effect.EngineState
 import my.umarh.paudio.core.model.EqConfig
 import my.umarh.paudio.core.model.OutputDevice
 import my.umarh.paudio.data.repo.ProfileRepository
-import my.umarh.paudio.data.repo.ProfileSettings
 import my.umarh.paudio.data.settings.SettingsRepository
 import my.umarh.paudio.service.HeadsetPromptSink
 import my.umarh.paudio.service.NotificationPermission
 import my.umarh.paudio.service.R
 import my.umarh.paudio.service.MixerSampleRate
+import my.umarh.paudio.service.ServiceFaults
 import my.umarh.paudio.service.ServiceFlags
 import my.umarh.paudio.service.ServiceLauncher
 import my.umarh.paudio.service.di.ServiceScope
@@ -70,6 +76,7 @@ class EngineController @Inject constructor(
     private val mixerRate: MixerSampleRate,
     private val notificationPermission: NotificationPermission,
     private val prompts: HeadsetPromptSink,
+    private val faults: ServiceFaults,
     @ServiceScope private val scope: CoroutineScope,
 ) {
     val state: StateFlow<EngineState> get() = engine.state
@@ -101,8 +108,13 @@ class EngineController @Inject constructor(
      */
     val notificationsBlocked: StateFlow<Boolean> = _notificationsBlocked
 
+    /** An unexpected pipeline failure is being retried (surfaced in the notification). */
+    val fault: StateFlow<Boolean> get() = faults.active
+
     private val lifecycleLock = Any()
+    private val personalizeMutex = Mutex()
     private var pipeline: Job? = null
+    private val promptedKeys = java.util.Collections.synchronizedSet(HashSet<String>())
 
     // ------------------------------------------------------------------ commands for features
 
@@ -135,19 +147,19 @@ class EngineController @Inject constructor(
      * Personalized (true) / Original (false) for the active profile, persisted in the profile.
      * Returns false when no profile applies (nothing changed).
      */
-    suspend fun setPersonalized(on: Boolean): Boolean {
-        val active = resolver.activeProfile.value as? ActiveProfile.Resolved ?: return false
-        val current = profiles.get(active.profile.id)?.profile ?: return false
-        if (current.personalizationOn != on) {
-            profiles.updateSettings(
-                current.id,
-                ProfileSettings(current.compStrength, current.gB, current.gP, current.gT, personalizationOn = on),
-            )
-        }
-        return true
+    suspend fun setPersonalized(on: Boolean): Boolean = personalizeMutex.withLock {
+        val active = resolver.activeProfile.value as? ActiveProfile.Resolved ?: return@withLock false
+        profiles.setPersonalization(active.profile.id, on)
+        true
     }
 
-    suspend fun togglePersonalized(): Boolean = setPersonalized(!personalized.value)
+    /** Flips the persisted value (read under a lock, so two quick taps toggle twice). */
+    suspend fun togglePersonalized(): Boolean = personalizeMutex.withLock {
+        val active = resolver.activeProfile.value as? ActiveProfile.Resolved ?: return@withLock false
+        val current = profiles.get(active.profile.id)?.profile?.personalizationOn ?: return@withLock false
+        profiles.setPersonalization(active.profile.id, !current)
+        true
+    }
 
     /** User tap on Conflict/Error: recreate the effects (DECISIONS §3). */
     fun retry() = engine.retry()
@@ -173,11 +185,35 @@ class EngineController @Inject constructor(
             refreshNotificationPermission()
             pipeline = scope.launch {
                 // Mode first so the engine never opens a session receiver for the wrong mode.
-                engine.setMode(settings.engineMode.first().toEngine())
-                engine.setRunning(true)
-                launch { settings.engineMode.drop(1).collect { engine.setMode(it.toEngine()) } }
-                launch { routePipeline().collect(::apply) }
-                launch { UnknownHeadsetPrompter(resolver.activeProfile, prompts).run() }
+                val mode = settings.engineMode.first().toEngine()
+                // Engine commands are posted under the lifecycle lock after a cancellation check, so a stop that
+                // lands in between can never be followed by a stale start (posts are FIFO).
+                synchronized(lifecycleLock) {
+                    ensureActive()
+                    engine.setMode(mode)
+                    // A restart in the same process must not inherit the previous route's device/target.
+                    engine.setPersonalized(false)
+                    engine.setRoute(null, null)
+                    engine.setRunning(true)
+                }
+                launch { settings.engineMode.collect { m -> post { engine.setMode(m.toEngine()) } } }
+                launch {
+                    routePipeline()
+                        .retryWhen { e, attempt ->
+                            if (e is CancellationException) {
+                                false
+                            } else {
+                                faults.report(e)
+                                delay(minOf(30_000L, 1_000L shl minOf(attempt.toInt(), 5)))
+                                true
+                            }
+                        }
+                        .collect { r ->
+                            faults.clear()
+                            apply(r)
+                        }
+                }
+                launch { UnknownHeadsetPrompter(resolver.activeProfile, prompts, flags, promptedKeys).run() }
             }
         }
     }
@@ -188,14 +224,25 @@ class EngineController @Inject constructor(
             pipeline?.cancel()
             pipeline = null
             _running.value = false
+            engine.setPersonalized(false)
+            engine.setRoute(null, null)
+            engine.setRunning(false)
         }
-        engine.setRunning(false)
         prompts.clear()
     }
 
     // ------------------------------------------------------------------ pipeline
 
-    private fun apply(route: Route) {
+    /** Runs [block] under the lifecycle lock iff the pipeline has not been cancelled (orders it against stop). */
+    private suspend fun post(block: () -> Unit) {
+        val ctx = currentCoroutineContext()
+        synchronized(lifecycleLock) {
+            ctx.ensureActive()
+            block()
+        }
+    }
+
+    private suspend fun apply(route: Route) = post {
         // Turning off first / on last, so a profile that is "Original" is never briefly audible.
         if (!route.personalized) {
             engine.setPersonalized(false)
@@ -217,23 +264,19 @@ class EngineController @Inject constructor(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     internal fun routePipeline(): Flow<Route> {
-        val fs = mixerRate.hz()
         val ladder = engine.diagnostics.map { it.ladder }.distinctUntilChanged()
-        var lastDeviceKey: String? = null
         return resolver.activeProfile
             .filter { it != ActiveProfile.Loading }
             .distinctUntilChangedBy(::identOf)
             .flatMapLatest { first ->
                 val ident = identOf(first)
-                val deviceChanged = ident.deviceKey != lastDeviceKey
-                lastDeviceKey = ident.deviceKey
                 when (first) {
                     ActiveProfile.Loading -> flowOf<Route>()
                     is ActiveProfile.NoProfile -> flowOf(Route(first.device, null, false))
                     is ActiveProfile.NotProcessable -> flowOf(Route(first.device, null, false))
                     is ActiveProfile.Resolved -> flow {
-                        // The new route must not run the old route's curve while this profile's tests load.
-                        if (deviceChanged) emit(Route(first.device, null, false))
+                        // The new route/profile must not run the old curve while this profile's tests load.
+                        emit(Route(first.device, null, false))
                         emitAll(
                             combine(
                                 resolver.activeProfile
@@ -244,7 +287,7 @@ class EngineController @Inject constructor(
                             ) { resolved, source, step ->
                                 Route(
                                     resolved.device,
-                                    curves.config(resolved.profile, source, fs, step),
+                                    curves.config(resolved.profile, source, mixerRate.hz(), step),
                                     resolved.profile.personalizationOn,
                                 )
                             },

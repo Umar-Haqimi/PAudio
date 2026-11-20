@@ -6,6 +6,7 @@ import dagger.Provides
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -17,6 +18,7 @@ import my.umarh.paudio.service.AppLabels
 import my.umarh.paudio.service.BootFallback
 import my.umarh.paudio.service.BootLogic
 import my.umarh.paudio.service.HeadsetPromptSink
+import my.umarh.paudio.service.ServiceFaults
 import my.umarh.paudio.service.MixerSampleRate
 import my.umarh.paudio.service.NotificationActionHandler
 import my.umarh.paudio.service.NotificationPermission
@@ -57,7 +59,9 @@ object ServiceProvidesModule {
     @Provides
     @Singleton
     @ServiceScope
-    fun serviceScope(): CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun serviceScope(faults: ServiceFaults): CoroutineScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> faults.report(e) },
+    )
 }
 
 /** Access for the manifest receivers (they are not Hilt entry points themselves). */

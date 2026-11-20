@@ -2,7 +2,9 @@ package my.umarh.paudio.service.engine
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -15,6 +17,7 @@ import my.umarh.paudio.core.dsp.DpLadderStep
 import my.umarh.paudio.core.model.Ear
 import my.umarh.paudio.core.model.EqConfig
 import my.umarh.paudio.core.model.FrequencyGrid
+import my.umarh.paudio.data.db.HearingTestEntity
 import my.umarh.paudio.data.db.ProfileEntity
 import my.umarh.paudio.data.db.ThresholdEntity
 import my.umarh.paudio.data.repo.HearingTestRepository
@@ -60,21 +63,32 @@ class ProfileCurveService @Inject constructor(private val tests: HearingTestRepo
     var plansComputed: Int = 0
         private set
 
-    /** The latest test of [profileId] as HL estimates; null = no test or an incomplete one. Re-emits on changes. */
+    /**
+     * The newest COMPLETE test of [profileId] as HL estimates (at most the [MAX_CANDIDATES] newest tests are
+     * considered, so an unfinished/imported partial one never hides an older complete one); null = none.
+     * Re-emits on changes.
+     */
     @OptIn(ExperimentalCoroutinesApi::class)
     fun observeSource(profileId: Long): Flow<HlSource?> =
-        tests.observeLatest(profileId).flatMapLatest { test ->
-            if (test == null) {
+        tests.observeForProfile(profileId).flatMapLatest { all ->
+            val newest = all.sortedWith(compareByDescending<HearingTestEntity> { it.startedAt }.thenByDescending { it.id })
+                .take(MAX_CANDIDATES)
+            if (newest.isEmpty()) {
                 flowOf(null)
             } else {
-                tests.observeThresholds(test.id).map { toSource(test.id, test.algoVersion, it) }
+                combine(newest.map { t -> tests.observeThresholds(t.id).map { toSource(t.id, t.algoVersion, it) } }) { sources ->
+                    sources.firstOrNull { it != null }
+                }
             }
         }.distinctUntilChanged()
 
     /** One-shot variant of [observeSource] for features that need the curve once. */
     suspend fun loadSource(profileId: Long): HlSource? {
-        val test = tests.latest(profileId) ?: return null
-        return toSource(test.id, test.algoVersion, tests.thresholds(test.id))
+        val newest = tests.observeForProfile(profileId).first()
+            .sortedWith(compareByDescending<HearingTestEntity> { it.startedAt }.thenByDescending { it.id })
+            .take(MAX_CANDIDATES)
+        for (t in newest) toSource(t.id, t.algoVersion, tests.thresholds(t.id))?.let { return it }
+        return null
     }
 
     /** The memoized backend config for [profile] (all of its settings are part of the cache key). */
@@ -136,5 +150,6 @@ class ProfileCurveService @Inject constructor(private val tests: HearingTestRepo
 
     private companion object {
         const val CACHE_SIZE = 16
+        const val MAX_CANDIDATES = 5
     }
 }

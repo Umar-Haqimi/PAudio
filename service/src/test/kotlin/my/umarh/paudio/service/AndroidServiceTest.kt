@@ -165,13 +165,15 @@ class AndroidServiceTest {
         poster.showUnknown(BT.headsetKey.value, profile(3, null, "Any headphones"))
         val n = shadowOf(nm).allNotifications.single()
         assertThat(n.channelId).isEqualTo(NotificationPoster.CHANNEL_HEADSET)
-        assertThat(n.actions.map { it.title.toString() }).containsExactly("Create profile", "Use Any headphones").inOrder()
+        assertThat(n.actions.map { it.title.toString() }).containsExactly("Create profile", "Don't ask for this device", "Use Any headphones").inOrder()
         val create = shadowOf(n.actions[0].actionIntent).savedIntent
         assertThat(create.getStringExtra(ServiceIntents.EXTRA_ROUTE)).isEqualTo(ServiceIntents.ROUTE_CREATE_PROFILE)
-        val use = shadowOf(n.actions[1].actionIntent).savedIntent
+        val ignore = shadowOf(n.actions[1].actionIntent).savedIntent
+        assertThat(ignore.action).isEqualTo(ServiceIntents.ACTION_IGNORE_HEADSET)
+        val use = shadowOf(n.actions[2].actionIntent).savedIntent
         assertThat(use.component!!.className).isEqualTo(NotificationActionReceiver::class.java.name)
         assertThat(use.getLongExtra(ServiceIntents.EXTRA_PROFILE_ID, -1)).isEqualTo(3L)
-        assertThat(shadowOf(n.actions[1].actionIntent).flags and PendingIntent.FLAG_IMMUTABLE).isNotEqualTo(0)
+        assertThat(shadowOf(n.actions[2].actionIntent).flags and PendingIntent.FLAG_IMMUTABLE).isNotEqualTo(0)
 
         poster.clear()
         assertThat(shadowOf(nm).allNotifications).isEmpty()

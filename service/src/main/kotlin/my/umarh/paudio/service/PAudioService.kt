@@ -44,13 +44,16 @@ class PAudioService : LifecycleService() {
         super.onStartCommand(intent, flags, startId)
         val action = intent?.action
         // A foreground start must be followed by startForeground quickly, whatever we decide afterwards.
+        if (action == ServiceIntents.ACTION_STOP) this.flags.userTurnedOff = true
         if (!enterForeground()) {
+            // Could not become a foreground service (background-start restrictions, a changed type allow-list):
+            // never fail silently, ask the user to start it from the app (opens in the foreground).
+            if (!this.flags.userTurnedOff) notifications.postTapToStart()
             stopSelf()
             return START_NOT_STICKY
         }
         when {
             action == ServiceIntents.ACTION_STOP -> {
-                this.flags.userTurnedOff = true
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -91,6 +94,7 @@ class PAudioService : LifecycleService() {
             state = controller.state.value,
             noSessionHint = controller.noSessionHint.value,
             personalized = profile?.profile?.personalizationOn,
+            fault = controller.fault.value,
         )
     }
 
@@ -102,7 +106,8 @@ class PAudioService : LifecycleService() {
                 controller.noSessionHint,
                 controller.activeProfile.map { (it as? ActiveProfile.Resolved)?.profile?.personalizationOn }
                     .distinctUntilChanged(),
-            ) { state, hint, personalized -> NotificationModel(state, hint, personalized) }
+                controller.fault,
+            ) { state, hint, personalized, fault -> NotificationModel(state, hint, personalized, fault) }
                 .distinctUntilChanged()
                 .collect { notifications.notifyEngine(it) }
         }

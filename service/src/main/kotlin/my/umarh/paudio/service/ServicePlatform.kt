@@ -18,6 +18,7 @@ object ServiceIntents {
     const val ACTION_STOP = "my.umarh.paudio.service.action.STOP"
     const val ACTION_TOGGLE_PERSONALIZED = "my.umarh.paudio.service.action.TOGGLE_PERSONALIZED"
     const val ACTION_USE_PROFILE = "my.umarh.paudio.service.action.USE_PROFILE"
+    const val ACTION_IGNORE_HEADSET = "my.umarh.paudio.service.action.IGNORE_HEADSET"
 
     /** Extra on the launch intent of the app: what the app should do when opened from a notification. */
     const val EXTRA_ROUTE = "my.umarh.paudio.extra.ROUTE"
@@ -39,6 +40,28 @@ object ServiceIntents {
 interface ServiceFlags {
     /** The user pressed "Turn off" (or stopped the engine in the app): boot and sticky restarts must not revive it. */
     var userTurnedOff: Boolean
+
+    /** Headset keys the user asked not to be prompted about ("Don't ask for this device"). */
+    var ignoredHeadsetKeys: Set<String>
+}
+
+/** Unexpected failures of the use-case layer: logged without PII (class name only) and shown as a fault. */
+@Singleton
+class ServiceFaults @Inject constructor() {
+    private val _active = MutableStateFlow(false)
+    val active: StateFlow<Boolean> = _active
+
+    fun report(e: Throwable) {
+        try {
+            android.util.Log.w("PAudio", "service fault: ${e.javaClass.simpleName}")
+        } catch (_: RuntimeException) {
+        }
+        _active.value = true
+    }
+
+    fun clear() {
+        _active.value = false
+    }
 }
 
 @Singleton
@@ -58,9 +81,23 @@ class SharedPrefsServiceFlags @Inject constructor(@ApplicationContext private va
             }
         }
 
+    override var ignoredHeadsetKeys: Set<String>
+        get() = try {
+            prefs.getStringSet(KEY_IGNORED, emptySet()).orEmpty().toSet()
+        } catch (_: RuntimeException) {
+            emptySet()
+        }
+        set(value) {
+            try {
+                prefs.edit().putStringSet(KEY_IGNORED, value).apply()
+            } catch (_: RuntimeException) {
+            }
+        }
+
     private companion object {
         const val FILE = "paudio_service"
         const val KEY_OFF = "user_turned_off"
+        const val KEY_IGNORED = "ignored_headsets"
     }
 }
 

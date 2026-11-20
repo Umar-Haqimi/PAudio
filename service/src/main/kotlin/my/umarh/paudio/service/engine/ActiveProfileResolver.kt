@@ -48,7 +48,7 @@ data class WhichHeadphones(val device: OutputDevice, val candidates: List<Profil
  * OutputDevices -> HeadsetKey -> profile of the active listener.
  *
  * Resolution order for a processable device (all within the active listener's profiles):
- * 1. the session answer to "Which headphones are these?" for this key,
+ * 1. the session answer to "Which headphones are these?" for this key (any listener's profile bound to it),
  * 2. the profile bound to exactly this headset,
  * 3. the profile remembered in the DataStore headsetKey -> profileId map ("Use <profile>"),
  * 4. otherwise [ActiveProfile.NoProfile].
@@ -110,10 +110,11 @@ class ActiveProfileResolver @Inject constructor(
         if (previous != null) overrides.update { it - previous }
         _pending.value = null
         if (firstEver || device == null || !device.isWiredLike) return
-        val listener = activeListener(listenerId, listeners) ?: return
-        val candidates = listener.profiles
-            .filter { it.headset == null || it.headset?.type == OutputDeviceType.WIRED || it.headset?.type == OutputDeviceType.USB }
-            .map { it.profile }
+        // A real key collision (SPEC §5.5): several non-Any profiles (of different listeners, since a listener has
+        // at most one profile per headset) are bound to this very wired/USB key. Any + one wired profile is the
+        // normal setup and never asks.
+        val key2 = device.headsetKey.value
+        val candidates = listeners.flatMap { it.profiles }.filter { it.headset?.key == key2 }.map { it.profile }
         if (candidates.size >= 2) _pending.value = WhichHeadphones(device, candidates)
     }
 
@@ -136,8 +137,11 @@ class ActiveProfileResolver @Inject constructor(
             val key = device.headsetKey.value
             val mine = listener.profiles
             fun byId(id: Long?) = mine.firstOrNull { it.profile.id == id }?.profile
-            val chosen = byId(sessionOverrides[key])
-                ?: mine.firstOrNull { it.headset?.key == key }?.profile
+            // A session answer to the collision question may pick another listener's profile.
+            val everyone = listeners.flatMap { l -> l.profiles.map { l.listener to it.profile } }
+            val answered = sessionOverrides[key]?.let { id -> everyone.firstOrNull { it.second.id == id } }
+            if (answered != null) return ActiveProfile.Resolved(device, answered.second, answered.first)
+            val chosen = mine.firstOrNull { it.headset?.key == key }?.profile
                 ?: byId(headsetProfiles[key])
             return if (chosen != null) {
                 ActiveProfile.Resolved(device, chosen, listener.listener)

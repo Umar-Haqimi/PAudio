@@ -78,6 +78,13 @@ class FakeProfiles : ProfileRepository {
     override suspend fun get(profileId: Long): ProfileWithHeadset? =
         listeners.value.flatMap { it.profiles }.firstOrNull { it.profile.id == profileId }
 
+    var setPersonalizationCalls = 0
+    override suspend fun setPersonalization(profileId: Long, on: Boolean) {
+        setPersonalizationCalls++
+        val p = profile(profileId) ?: return
+        updateSettings(profileId, ProfileSettings(p.compStrength, p.gB, p.gP, p.gT, on))
+    }
+
     override suspend fun updateSettings(profileId: Long, settings: ProfileSettings) {
         listeners.value = listeners.value.map { lp ->
             lp.copy(
@@ -106,6 +113,7 @@ class FakeProfiles : ProfileRepository {
 /** Tests keyed by profile id; [gates] lets a test hold back a profile's data (to model a slow DB read). */
 class FakeTests : HearingTestRepository {
     private val latest = HashMap<Long, MutableStateFlow<HearingTestEntity?>>()
+    private val all = MutableStateFlow<List<HearingTestEntity>>(emptyList())
     private val thresholds = HashMap<Long, List<ThresholdEntity>>()
     val gates = HashMap<Long, CompletableDeferred<Unit>>()
 
@@ -113,6 +121,7 @@ class FakeTests : HearingTestRepository {
 
     fun put(test: HearingTestEntity, th: List<ThresholdEntity>) {
         thresholds[test.id] = th
+        all.value = all.value.filter { it.id != test.id } + test
         stateFor(test.profileId).value = test
     }
 
@@ -125,7 +134,10 @@ class FakeTests : HearingTestRepository {
     override suspend fun get(testId: Long): HearingTestEntity? = latest.values.firstNotNullOfOrNull { it.value?.takeIf { t -> t.id == testId } }
     override suspend fun thresholds(testId: Long): List<ThresholdEntity> = thresholds[testId].orEmpty()
     override suspend fun save(test: HearingTestEntity, thresholds: List<ThresholdEntity>, trials: List<TrialEntity>, headsetKey: HeadsetKey?): Long = TODO()
-    override fun observeForProfile(profileId: Long): Flow<List<HearingTestEntity>> = TODO()
+    override fun observeForProfile(profileId: Long): Flow<List<HearingTestEntity>> = flow {
+        gates[profileId]?.await()
+        emitAll(all.map { l -> l.filter { it.profileId == profileId } })
+    }
     override suspend fun trials(testId: Long): List<TrialEntity> = TODO()
     override suspend fun delete(testId: Long) = TODO()
     override fun observeForTrend(profileId: Long, headsetKey: HeadsetKey): Flow<List<HearingTestEntity>> = TODO()
@@ -142,7 +154,9 @@ class FakeLauncher : ServiceLauncher {
     override fun stop() { stops++ }
 }
 
-class FakeFlags(override var userTurnedOff: Boolean = false) : ServiceFlags
+class FakeFlags(override var userTurnedOff: Boolean = false) : ServiceFlags {
+    override var ignoredHeadsetKeys: Set<String> = emptySet()
+}
 
 class FakeSink : HeadsetPromptSink, BootFallback {
     val shown = mutableListOf<Pair<String, Long?>>()
@@ -231,7 +245,7 @@ class Rig(testScope: TestScope, val store: Store = Store(), val rate: Int = 48_0
     val resolver = ActiveProfileResolver(store.devices, store.settings, store.profiles, scope)
     val controller = EngineController(
         engine, resolver, curves, store.settings, store.profiles, launcher, store.flags,
-        { rate }, { true }, sink, scope,
+        { rate }, { true }, sink, ServiceFaults(), scope,
     )
 
     /** What the curve service would produce for profile [id] right now (the expected backend config). */
