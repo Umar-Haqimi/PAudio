@@ -88,6 +88,12 @@
 - Trend filtering by `headsetKey` inside `deviceSnapshotJson` (`DeviceSnapshot.withHeadsetKey`).
 - `androidTest/MigrationTest` is ready for version 2 (not run in CI).
 
+### M7b — In-app A/B player (`:audio:playback`)
+- `ExoAbPlayer` (Media3 ExoPlayer): own audio session id set before `prepare`, ONE enabled `EffectHandle` on it via injected `EffectBackend`, `BypassToken` (RESULTS_AB / PREFERENCE_AB) held from first `play()` to `release()`, 20 ms duck on `swapTo` (rapid swaps coalesce), transient audio focus, `listenTicks` (side + delta ms) for `AbRoundGate`.
+- `AbGainPlanner`: `P_common = max(-15, -max(0, max G over ALL options) - 0.5)`; effect inputGain = `P_common - ΔL(G)` (flat: ΔL = 0). `swapTo(cfg, inputGainDb)` is passed `cfg.preampDb = P_common` and `inputGainDb = -ΔL`.
+- `LtasRepository`, `DemoClipSource` (preference loop = first 12 s), `AbPlayerFactory` (`@Inject`, app must bind `EffectBackend` + `BypassController`).
+- Build changes: catalog `androidx-media3-test-utils`; `:audio:playback` applies `paudio.hilt`, depends on `:core:dsp`, `:core:preference`; `RequiresHardware` annotation in `:testing`.
+
 ## M6 — audio:tone + audio:device
 
 - `:audio:tone`: `StreamScheduler` (pure silence/stimulus/25 ms raised-cosine ramp-down), `StreamEngine` (writer thread over a `PcmSink`), `AudioTrackToneOutput` (one continuous float AudioTrack, 16-bit TPDF fallback), `AndroidVolumeController` + `VolumeLock`, `AudioFocusMonitor`, Hilt `ToneModule`.
@@ -107,3 +113,4 @@
 - Reduced motion: `ANIMATOR_DURATION_SCALE == 0` skips butterfly draw-in, EQ spring, wave amplitude ease and button pulse.
 - Tests: JVM math/seed tests + Robolectric Compose tests (light/dark, semantics, DisclaimerCard has no click/dismiss/expand/collapse action).
 - Note: `./gradlew verifyFeatureBoundaries` reports "implicit dependency" validation errors when run in the same invocation as other build tasks (pre-existing build-logic issue); run it alone.
+- M7b review fixes: `configFor` takes the real output sample rate and ladder (`AbPlayerFactory.outputSampleRate()`, `DpEqPlanner.fromCurve`); `swapTo` required before `play`; bypass acquired in `load`; device checklist: ClippingMediaSource loop is re-seek (not sample-gapless), duck click-free, focus loss.
