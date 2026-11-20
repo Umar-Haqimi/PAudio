@@ -1,0 +1,28 @@
+# Gradle / build
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+.kotlin/
+
+# Local config and secrets (never commit)
+local.properties
+keystore.properties
+*.jks
+*.keystore
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Python tooling (tools/golden)
+.venv/
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+*.log
+captures/
+.externalNativeBuild/
+.cxx/

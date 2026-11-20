@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Simple headphones glyph (placeholder icon). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M30,60 L30,54 C30,40 41,30 54,30 C67,30 78,40 78,54 L78,60"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="5" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M26,58 L34,58 Q36,58 36,60 L36,74 Q36,76 34,76 L30,76 Q26,76 26,72 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M82,58 L74,58 Q72,58 72,60 L72,74 Q72,76 74,76 L78,76 Q82,76 82,72 Z" />
+</vector>

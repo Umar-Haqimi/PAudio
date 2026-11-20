@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="feature_hearingtest_title">Hearing test</string>
+    <string name="hearingtest_show_results">Show results</string>
+    <string name="hearingtest_back">Back</string>
+</resources>

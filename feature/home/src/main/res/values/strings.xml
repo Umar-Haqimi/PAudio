@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="feature_home_title">Home</string>
+    <string name="home_action_hearing_test">Hearing test</string>
+    <string name="home_action_preference_test">Preference test</string>
+    <string name="home_action_health">Hearing health</string>
+    <string name="home_action_profiles">Profiles</string>
+    <string name="home_action_settings">Settings</string>
+</resources>

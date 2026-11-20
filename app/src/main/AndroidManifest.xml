@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        Permissions (SPEC §6): the app MUST NOT declare INTERNET, BLUETOOTH_CONNECT, READ_MEDIA_AUDIO,
+        READ_EXTERNAL_STORAGE, any location permission or REQUEST_IGNORE_BATTERY_OPTIMIZATIONS.
+        `./gradlew :app:verifyPermissions` enforces this on the merged release manifest.
+        Allowed (added by the milestone that needs them): MODIFY_AUDIO_SETTINGS, FOREGROUND_SERVICE,
+        FOREGROUND_SERVICE_SPECIAL_USE, POST_NOTIFICATIONS, RECEIVE_BOOT_COMPLETED, RECORD_AUDIO (optional).
+    -->
+
+    <application
+        android:name=".PAudioApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.PAudio">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.PAudio">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

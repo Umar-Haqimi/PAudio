@@ -1,0 +1,65 @@
+# PAudio progress
+
+## Done
+
+### M1 — Skeleton (complete)
+- Multi-module Gradle build (Gradle 9.9.2 wrapper, AGP 9.5.1, Kotlin 2.4.21), version catalog `gradle/libs.versions.toml`.
+- `build-logic/` included build with convention plugins: `paudio.android.application`, `paudio.android.library`,
+  `paudio.android.compose`, `paudio.android.feature`, `paudio.jvm.library`, `paudio.hilt`, `paudio.core.guard`.
+  Module build files are 3–25 lines.
+- Modules (SPEC §5.1 + `:testing`): `:app`, `:designsystem`, `:core:{model,dsp,audiometry,preference}`, `:data`,
+  `:audio:{tone,device,effect,playback}`, `:service`, `:feature:{onboarding,home,hearingtest,results,health,preference,profiles,settings}`, `:testing`.
+  Android namespaces derive from the path (`:feature:home` -> `my.umarh.paudio.feature.home`).
+- `:core:model`: `Ear`, `FrequencyGrid`, `TestMode`, `OutputDevice(Type)`, `HeadsetKey`, `StereoBuffer`, `EnvSnapshot`,
+  `SessionEvent`, `EqConfig`, `AudioSource`, the §5.2 interfaces verbatim, Profile JSON schema v1 (`ProfileFile` + `ProfileJson.encode/decode`,
+  unknown keys ignored, unknown major version rejected). Unit tests: HeadsetKey, JSON round trip / unknown fields / version / malformed input.
+- `:testing`: `FakeToneOutput`, `FakeVolumeController`, `FakeOutputDevices`, `FakeEnvironmentChecks`, `FakeEffectBackend`/`FakeEffectHandle` (+ tests).
+- `:designsystem`: `PAudioTheme(seedColor, darkTheme, content)` (MaterialKolor seed scheme -> wallpaper dynamic colour on API 31+ -> static brand scheme),
+  `MaterialExpressiveTheme` + `MotionScheme.expressive()`, bundled Roboto Flex variable font (`res/font/roboto_flex.ttf`, OFL text in `designsystem/OFL-RobotoFlex.txt`),
+  `PlaceholderScreen`.
+- `:app`: `@HiltAndroidApp` Application, edge-to-edge `@AndroidEntryPoint` `MainActivity`, type-safe Navigation Compose host; every feature exposes
+  `NavGraphBuilder.xxxScreen(...)` with a placeholder screen (strings in each module's `strings.xml`). No `INTERNET`; backup rules exclude
+  database/sharedpref/datastore from cloud backup and allow device transfer; `dependenciesInfo` off; release = R8 + shrinkResources + `Log.v/d/i` stripped;
+  optional signing from `keystore.properties` or `PAUDIO_KEYSTORE_FILE/PAUDIO_KEYSTORE_PASSWORD/PAUDIO_KEY_ALIAS/PAUDIO_KEY_PASSWORD`; `values-ms/` stub.
+- `:app:verifyPermissions` (merged release manifest, wired into `check`) and `verifyPureKotlin` on every `:core:*` module (wired into `check`). Both proven to fail on a violation.
+- CI: `.github/workflows/ci.yml` (temurin 21, Android SDK, Gradle cache, `./gradlew check assembleDebug`).
+
+## Next
+- M2: `:core:dsp` + golden tooling. M0 (research, `docs/DECISIONS.md`) is being written separately; confirm `Ear.channelIndex` mapping, DP band semantics there.
+- Add permissions as the milestones need them (`MODIFY_AUDIO_SETTINGS`, FGS, `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`, optional `RECORD_AUDIO`); `verifyPermissions` guards the forbidden list.
+- `:data` has only DataStore on its classpath; Room + KSP schema export are in the catalog but not wired (M5).
+- `:designsystem` still needs the signature components (hear button, wavy progress, butterfly, charts) and the Material Symbols vector drawables.
+- Malay translations (`values-ms/strings.xml` is an empty stub).
+
+## Open issues
+- Maven Central intermittently returns HTTP 429 in this environment; just rerun. `plugins.gradle.org/m2` is configured as a fallback.
+- The lint `MissingTranslation` check is not an issue yet because `values-ms` has no entries; revisit when translations start.
+- `:core:*` guard treats every `androidx.*`, `com.android.*` and `com.google.android.*` artifact as Android, including KMP `-jvm` artifacts of androidx (e.g. `androidx.annotation`). Core must not use them.
+- `OutputDeviceType.OTHER.isProcessable = false` (unknown routes are never processed) — revisit in M6 if needed.
+
+## Decisions
+- **Versions** (all in `gradle/libs.versions.toml`, all pinned as requested, no fallbacks needed): AGP 9.5.1, Gradle 9.9.2, Kotlin 2.4.21, KSP 2.3.14, Compose BOM 2026.11.01,
+  material3 1.5.0 (explicit pin over the BOM), MaterialKolor 5.0.1, Hilt 2.60.1, hilt-navigation-compose 1.4.0, navigation-compose 2.10.2, Room 2.8.5 (catalog only),
+  DataStore 1.3.0, Media3 1.11.1, activity-compose 1.13.0, lifecycle 2.11.1, core-ktx 1.19.1, kotlinx-serialization 1.13.0, coroutines 1.11.0,
+  Robolectric 4.18.1, Truth 1.4.5, Turbine 1.2.1, JUnit 4.13.2, androidx.test.ext:junit 1.3.0, graphics-shapes 1.1.0.
+- **AGP 9 built-in Kotlin**: `org.jetbrains.kotlin.android` is NOT applied anywhere (AGP 9 compiles Kotlin itself). Only `kotlin.plugin.compose`, `kotlin.plugin.serialization`,
+  KSP and the Hilt plugin are applied on Android modules; `org.jetbrains.kotlin.jvm` on JVM modules. KSP 2.3.14 and Hilt 2.60.1 work with it.
+- **compileSdk 37.1** DSL in AGP 9.5: `compileSdk { version = release(37) { minorApiLevel = 1 } }`. `CommonExtension` has no `defaultConfig {}` lambda blocks, so the
+  shared convention uses property access (`android.defaultConfig.minSdk = 28`).
+- **JVM level**: bytecode/Kotlin target 17 (`compileOptions`, `jvmTarget`), compiled on JDK 21. No Gradle toolchain is declared because only JDK 21 is installed and
+  toolchain auto-provisioning needs network; CI uses JDK 21.
+- **Build tools**: AGP 9.5.1 auto-installs build-tools 36.0.0 (37.0.0 is present but not selected).
+- **Expressive theme**: `MaterialExpressiveTheme(colorScheme, motionScheme, shapes, typography)` and `MotionScheme.expressive()` exist in material3 1.5.0 and compile
+  without an opt-in. `LinearWavyProgressIndicator` / `CircularWavyProgressIndicator` and `MaterialShapes` also exist (M0 confirms parameters).
+  Seed schemes use MaterialKolor `rememberDynamicColorScheme(..., style = PaletteStyle.Expressive, specVersion = ColorSpec.SpecVersion.SPEC_2025)` fed into
+  `MaterialExpressiveTheme` (rather than `DynamicMaterialTheme`, which wraps plain `MaterialTheme` and would lose the expressive motion scheme).
+- **Roboto Flex**: downloaded from google/fonts `ofl/robotoflex/RobotoFlex[GRAD,XOPQ,XTRA,YOPQ,YTAS,YTDE,YTFI,YTLC,YTUC,opsz,slnt,wdth,wght].ttf` (1.7 MB) via jsDelivr
+  (raw.githubusercontent was blocked in the sandbox); stored as `res/font/roboto_flex.ttf`; weights via the `wght` variation axis.
+- **No-Android-in-core check** (`build-logic/convention/.../VerifyPureKotlinTask.kt`, applied to every `:core:*` project from the root `build.gradle.kts` through
+  `CoreGuardConventionPlugin`, so modules cannot opt out): fails if a project applies a `com.android.*` plugin, resolves any `com.android.*`/`androidx.*`/`com.google.android.*`
+  artifact on compile/runtime/test classpaths, depends on a non-`:core:` project, or has an unresolvable dependency.
+- **verifyPermissions** (`VerifyPermissionsTask.kt`, registered in `AndroidApplicationConventionPlugin` through the variant API for the `release` variant,
+  input `SingleArtifact.MERGED_MANIFEST`): parses `uses-permission*` and fails on the §6 forbidden list.
+- **Configuration cache, parallel and build cache are on** and working.
+- **Navigation**: Navigation Compose 2.10 type-safe routes (`@Serializable data object XxxRoute`); the feature convention applies the serialization plugin.
+- **Android launcher icon**: placeholder vector headphones (adaptive + monochrome).
