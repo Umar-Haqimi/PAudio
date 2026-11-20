@@ -87,3 +87,12 @@
 - Import rejects (never truncates) >2 MB, >100 tests, >20,000 trials, nesting >32, NaN/Inf; clamps numeric ranges; recomputes `HeadsetKey`.
 - Trend filtering by `headsetKey` inside `deviceSnapshotJson` (`DeviceSnapshot.withHeadsetKey`).
 - `androidTest/MigrationTest` is ready for version 2 (not run in CI).
+
+## M6 — audio:tone + audio:device
+
+- `:audio:tone`: `StreamScheduler` (pure silence/stimulus/25 ms raised-cosine ramp-down), `StreamEngine` (writer thread over a `PcmSink`), `AudioTrackToneOutput` (one continuous float AudioTrack, 16-bit TPDF fallback), `AndroidVolumeController` + `VolumeLock`, `AudioFocusMonitor`, Hilt `ToneModule`.
+- `:audio:device`: `DeviceMapping`, `AndroidOutputDevices`, `AndroidEnvironmentChecks` + `EnvironmentVerdict`, `AndroidNoiseMeter` + `NoiseLevel`, Hilt `DeviceModule`.
+- `:core:model`: added `InterruptibleToneOutput` (extension of `ToneOutput`); `:testing`: `RequiresHardware`, `FakeToneOutput` implements the extension.
+- Hardware tests (`@RequiresHardware`) in `audio/tone/src/androidTest`; exclude in CI via `-Pandroid.testInstrumentationRunnerArguments.notAnnotation=my.umarh.paudio.testing.RequiresHardware`.
+- M6 review fixes: engine failure recovery (dead-object sink re-creation once, failed engine rebuilt by `open()`), single stable `playing` flow, orphan-waiter/close races, echo suppression (`expectSelf`), `VolumeLock` initial drift + no raising after external lowering, exact-zero silence in 16-bit path, head-reset detection, muted-mic noise chunks skipped.
+- Device verification gap: Samsung `mono_audio` setting key is not covered by `AndroidEnvironmentChecks` (only `master_mono`).
