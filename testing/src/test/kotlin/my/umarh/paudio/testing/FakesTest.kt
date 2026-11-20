@@ -16,6 +16,18 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class FakesTest {
     @Test
+    fun toneOutputIsAudibleOnlyDuringPlayAndStopCurrentIsHarmless() = runTest {
+        val out = FakeToneOutput()
+        out.open(48_000)
+        val seen = mutableListOf<Boolean>()
+        out.onPlay = { seen += out.playing.value }
+        out.stopCurrent()
+        out.play(StereoBuffer(FloatArray(4), FloatArray(4), 48_000))
+        assertThat(seen).containsExactly(true)
+        assertThat(out.playing.value).isFalse()
+    }
+
+    @Test
     fun toneOutputRecordsBuffersAndSilence() = runTest {
         val out = FakeToneOutput()
         out.open(48_000)
