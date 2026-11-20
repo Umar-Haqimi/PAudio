@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
@@ -49,6 +51,8 @@ import java.text.DateFormat
 import java.text.NumberFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.sign
+import kotlin.math.truncate
 import kotlinx.serialization.Serializable
 import my.umarh.paudio.core.audiometry.WhoGrade
 import my.umarh.paudio.core.model.TestMode
@@ -78,11 +82,29 @@ fun NavGraphBuilder.healthScreen(onBack: () -> Unit) {
 @Composable
 internal fun HealthScreen(onBack: () -> Unit, viewModel: HealthViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    HealthScreenContent(state = state, onBack = onBack)
+    HealthScreenContent(state = state, onBack = onBack, onShowLatest = viewModel::showLatest)
 }
 
 internal const val CONTENT_TAG = "health_content"
 internal const val DISCLAIMER_TAG = "health_disclaimer"
+internal const val SHEET_DISCLAIMER_TAG = "health_sheet_disclaimer"
+internal const val SHEET_TAG = "health_sheet"
+internal const val UNAVAILABLE_TAG = "health_unavailable"
+
+/** Footer height cap (fraction of the viewport) so a large font scale cannot push the content off screen. */
+private const val DISCLAIMER_MAX_HEIGHT_FRACTION = 0.4f
+
+/**
+ * The normative disclaimer: non-dismissable, no actions. Its height is capped and the whole card scrolls when the text
+ * does not fit (e.g. 200 % font scale); the full text stays in the semantics tree for screen readers.
+ */
+@Composable
+private fun PinnedDisclaimer(tag: String, modifier: Modifier = Modifier) {
+    val maxHeight = (LocalConfiguration.current.screenHeightDp * DISCLAIMER_MAX_HEIGHT_FRACTION).dp
+    Box(modifier.heightIn(max = maxHeight).verticalScroll(rememberScrollState())) {
+        DisclaimerCard(text = stringResource(R.string.health_disclaimer), modifier = Modifier.testTag(tag))
+    }
+}
 
 @StringRes
 internal fun gradeLabelRes(grade: WhoGrade): Int = when (grade) {
@@ -100,6 +122,7 @@ internal fun gradeLabelRes(grade: WhoGrade): Int = when (grade) {
 internal fun HealthScreenContent(
     state: HealthUiState,
     onBack: () -> Unit,
+    onShowLatest: () -> Unit = {},
     listState: LazyListState = rememberLazyListState(),
 ) {
     var showSheet by rememberSaveable { mutableStateOf(false) }
@@ -117,12 +140,9 @@ internal fun HealthScreenContent(
         // Pinned footer: outside the scrolling list, so the disclaimer is always visible.
         bottomBar = {
             Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 3.dp) {
-                DisclaimerCard(
-                    text = stringResource(R.string.health_disclaimer),
-                    modifier = Modifier
-                        .navigationBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .testTag(DISCLAIMER_TAG),
+                PinnedDisclaimer(
+                    DISCLAIMER_TAG,
+                    Modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
         },
@@ -149,6 +169,7 @@ internal fun HealthScreenContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            is HealthUiState.Unavailable -> UnavailableMessage(state, onShowLatest, Modifier.padding(padding))
             is HealthUiState.Content -> ContentList(
                 content = state.content,
                 padding = padding,
@@ -158,6 +179,38 @@ internal fun HealthScreenContent(
         }
     }
     if (showSheet) HowToReadSheet(onDismiss = { showSheet = false })
+}
+
+@Composable
+private fun UnavailableMessage(state: HealthUiState.Unavailable, onShowLatest: () -> Unit, modifier: Modifier) {
+    val body = when (state.reason) {
+        UnavailableReason.TEST_MISSING -> R.string.health_unavailable_test_missing
+        UnavailableReason.PROFILE_MISSING -> R.string.health_unavailable_profile_missing
+        UnavailableReason.INCOMPLETE -> R.string.health_unavailable_incomplete
+        UnavailableReason.ERROR -> R.string.health_unavailable_error
+    }
+    Column(
+        modifier.fillMaxSize().padding(24.dp).testTag(UNAVAILABLE_TAG),
+        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        PAudioIcon(PAudioIcons.Info, contentDescription = null)
+        Text(
+            stringResource(R.string.health_unavailable_title),
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.semantics { heading() },
+        )
+        Text(
+            stringResource(body),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (state.canShowLatest) {
+            OutlinedButton(onClick = onShowLatest, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.health_show_latest))
+            }
+        }
+    }
 }
 
 @Composable
@@ -247,6 +300,11 @@ private fun EarSummaryCard(@StringRes title: Int, summary: EarSummary, locale: L
     val ehf = formatDb(summary.ehf, locale)
     SectionCard {
         CardTitle(name)
+        Text(
+            stringResource(R.string.health_ear_grade_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         LabelledValue(stringResource(R.string.health_pta_label), stringResource(R.string.health_pta_value, pta))
         LabelledValue(stringResource(R.string.health_ehf_label), stringResource(R.string.health_ehf_value, ehf))
         Text(
@@ -340,8 +398,9 @@ private fun TrendCard(content: HealthContent) {
 @Composable
 private fun HowToReadSheet(onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.navigationBarsPadding().testTag(SHEET_TAG)) {
         LazyColumn(
-            Modifier.navigationBarsPadding(),
+            Modifier.weight(1f, fill = false),
             contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -363,6 +422,9 @@ private fun HowToReadSheet(onDismiss: () -> Unit) {
                 }
             }
         }
+        // The sheet scrims over the Scaffold footer, so the disclaimer is repeated here, outside the scrolling list.
+        PinnedDisclaimer(SHEET_DISCLAIMER_TAG, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+        }
     }
 }
 
@@ -379,5 +441,16 @@ private fun androidx.compose.foundation.lazy.LazyListScope.sheetSection(@StringR
     }
 }
 
-internal fun formatDb(value: Double, locale: Locale): String =
-    NumberFormat.getNumberInstance(locale).apply { maximumFractionDigits = 0 }.format(value)
+/**
+ * Locale-aware, one decimal, truncated toward zero (never rounded up) so a value just under a grade boundary is not
+ * displayed as the boundary itself next to a lower grade (19.6 shows as 19.6, not "20"). Never prints "-0".
+ */
+internal fun formatDb(value: Double, locale: Locale): String {
+    val tenths = truncate(value * 10 + sign(value) * 1e-6)
+    val shown = if (tenths == 0.0) 0.0 else tenths / 10
+    return NumberFormat.getNumberInstance(locale).apply {
+        minimumFractionDigits = 0
+        maximumFractionDigits = 1
+        roundingMode = java.math.RoundingMode.HALF_UP
+    }.format(shown)
+}
