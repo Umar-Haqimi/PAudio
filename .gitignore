@@ -29,3 +29,4 @@ captures/
 
 # Agent worktrees (local only)
 .claude/worktrees/
+tools/assets/.cache/

@@ -30,7 +30,7 @@ python tools/golden/gen_all.py --out core --check         # (to be implemented i
 | 6 | `dp_band_mapping.json` | `core/dsp` | M2 | band gains **0.01 dB**, stops/cutoffs exact, recon RMS **0.01 dB** and ≤ **0.5 dB** acceptance | numpy re-implementation of DPFrequency PreEQ + linear-dB reconstruction (§ below) |
 | 7 | `stimulus_synthesis.json` | `core/audiometry` | M3 | **1e-6** (samples), 0.01 dB (spectral stats) | numpy synthesis from the SPEC definition |
 | 8 | `hughson_westlake.json` | `core/audiometry` | M3 | exact (levels in dB, integers) | hand-derived, documented below |
-| 9 | `preference_bisection.json` | `core/preference` | M4 | exact (gains in dB) | hand-derived from SPEC §4.5 rules |
+| 9 | `preference.json` | `core/preference` | M4 | exact (gains in dB) | hand-derived from SPEC §4.5 rules |
 
 ### Set 1 — RBJ magnitudes
 - Filters (SPEC §2.1.3): low-shelf `fc=105 Hz, Q=0.707`; peaking `fc=3000 Hz, Q=0.8`; high-shelf `fc=8000 Hz, Q=0.707`; fs = 48000 Hz; RBJ Audio-EQ-Cookbook coefficients (https://www.w3.org/TR/audio-eq-cookbook/) with `A = 10^(dBgain/40)`, shelf slope via `Q` (use the Q-form: `alpha = sin(w0)/(2Q)`, shelf terms `2·sqrt(A)·alpha`).
