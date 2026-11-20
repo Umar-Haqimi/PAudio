@@ -475,3 +475,11 @@ Other facts worth knowing:
 - **AIDL HAL clamping** (§1.7) is the most likely source of device-specific surprises; the readback + ladder in §1 is mandatory, not optional.
 - Android 9 (API 28) engine differs (§1.3): expect a different window; the app should still work, with possibly ±1 dB ripple unmodelled. Test on an API 28/29 device only if available.
 - AOSP `main` on googlesource is a 2025-03 snapshot; use tags (`android-16.0.0_r4`) for stable permalinks if the file lines above shift.
+
+---
+
+## 17. WHO grade ceiling of the §2.1.3 measurement model (orchestrator note)
+
+**Finding.** Under the anchor `A = min_ears mean(N(1k), N(2k))`, the better ear's `HL_est(1k) + HL_est(2k) = 0` by construction, and censoring caps every point at `L_max = L_exp + 50`, so `HL_est(4k) ≤ 50 − A_rel`. Hence better-ear `PTA3 = HL_est(4k)/3 ≤ ≈17 dB` unless the better ear is *more sensitive* than the reference at 1–2 kHz (thresholds below `L_exp`). In practice the approximate WHO grade will almost always read "Normal"; "Mild" is reachable only in edge cases and Moderate+ essentially never (max PTA3 = 25 with 1–2 kHz at `L_min`).
+
+**Decision.** Implement exactly as specified (normative). The UI copy for the grade must say it is approximate, that flat or low-frequency loss can't be detected, and must never imply "your hearing is fine". The golden set `mild_grade_reachable` (13th set, in addition to the 12 required) exercises the non-NORMAL path; WHO band boundaries are unit-tested directly on `whoGrade(pta)`.
