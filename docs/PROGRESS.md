@@ -87,3 +87,9 @@
 - Import rejects (never truncates) >2 MB, >100 tests, >20,000 trials, nesting >32, NaN/Inf; clamps numeric ranges; recomputes `HeadsetKey`.
 - Trend filtering by `headsetKey` inside `deviceSnapshotJson` (`DeviceSnapshot.withHeadsetKey`).
 - `androidTest/MigrationTest` is ready for version 2 (not run in CI).
+
+### M7a — `:audio:effect` engine (complete)
+- `DynamicsProcessingBackend` (priority 100, frequency variant, 16 ms frames, PreEQ + limiter(-3 dB), per-ear gains, diff writes on one worker thread >= 50 ms apart, readback -> ladder, MBC-passthrough creation retry), `BroadcastSessionSource` / `LegacySessionSource` + pure `parseSessionIntent`, `EffectEngine` (state machine, 16-session cap, idle sweep, no-session hint, conflict/error handling) which is also the ref-counted P0 `BypassController`; Hilt `EffectModule`.
+- Additive `core:model` changes: `EffectCreationException`/`EffectFailureKind`, `EffectHandle.clamped` (default never). `:testing`: `FakeEffectBackend.failCreates`, `FakeEffectHandle.setClamped`, `@RequiresHardware`.
+- Tests: engine (fakes, P0 bypass incl. sessions/config/device changes during bypass, nested tokens, process-death restore, conflict, ladder, idle, hint), backend via a fake `DpPort` (Robolectric), session source receiver (Robolectric); androidTest `DynamicsProcessingHardwareTest` (`@RequiresHardware`, not run in CI).
+- Needs a device: real DP creation/readback, priority arbitration against another EQ app, enable-toggle clicks. The `:service` consumes `EffectEngine` (`setRunning/setMode/setOutputDevice/setTarget/setPersonalized/retry`, `state`, `diagnostics`, `noSessionHint`).

@@ -35,8 +35,24 @@ interface NoiseMeter {
 }
 
 interface EffectBackend {
+    /**
+     * Creates a DISABLED effect configured with [cfg].
+     * @throws EffectCreationException when the effect can't be created (conflict with another EQ app or refusal).
+     */
     fun create(session: Int, cfg: EqConfig): EffectHandle
 }
+
+/** Why [EffectBackend.create] failed (DECISIONS §3 conflict detection (a)). */
+enum class EffectFailureKind {
+    /** Another effect with ≥ priority owns the engine (`UnsupportedOperationException` from the constructor). */
+    CONFLICT,
+
+    /** The audio system refused the effect (also after the MBC-passthrough retry). */
+    CREATION_FAILED,
+}
+
+class EffectCreationException(val kind: EffectFailureKind, message: String? = null, cause: Throwable? = null) :
+    RuntimeException(message ?: kind.name, cause)
 
 interface EffectHandle {
     fun apply(cfg: EqConfig)
@@ -44,6 +60,14 @@ interface EffectHandle {
 
     /** true while this handle has control of the underlying effect (SPEC §2.2 trap 15). */
     val control: StateFlow<Boolean>
+
+    /**
+     * true when the read-back after the last full apply showed the HAL clamped/altered the band layout
+     * (DECISIONS §1 fallback ladder): the engine then moves down the ladder. Default: never.
+     */
+    val clamped: StateFlow<Boolean> get() = NeverClamped
+
+    /** Idempotent. */
     fun release()
 }
 
@@ -58,3 +82,5 @@ interface AbPlayer {
     fun pause()
     fun release()
 }
+
+private val NeverClamped: StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(false)
