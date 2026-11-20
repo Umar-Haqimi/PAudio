@@ -16,10 +16,10 @@
 | M4 Preference + demo assets | `:core:preference`, golden set 9, NIN FLAC clips + LTAS, `ASSETS_LICENSE.md` | ✅ merged | Sonnet → Sonnet (clean) |
 | M5 Data | `:data` (Room v1, repos, DataStore, export/import, fuzz) | ✅ merged (+ fixes) | Sonnet → Sonnet |
 | M6 Tone + device | `:audio:tone`, `:audio:device` | ✅ merged (+ fixes) | Sonnet → Sonnet |
-| M7a Effect engine | `:audio:effect` | ⏳ see §1.1 | Sonnet → Opus |
+| M7a Effect engine | `:audio:effect` | ✅ merged (+ 13 fixes + clamp-race fix); **Opus re-verify pending** | Sonnet → Opus |
 | M7b A/B player | `:audio:playback` | ✅ merged (+ fixes) | Sonnet → Sonnet |
 | M8a Design system | `:designsystem` components + icons | ✅ merged (+ fixes) | Sonnet → Sonnet |
-| M10 Hearing health | `:feature:health` | ⏳ see §1.1 | Sonnet → (review pending) |
+| M10 Hearing health | `:feature:health` | ✅ merged; **review pending** | Sonnet → (none yet) |
 | M7c Service + use cases | `:service` | ❌ not started | — |
 | M8b Onboarding/Home/Profiles/Settings | `:feature:onboarding/home/profiles/settings` | ❌ not started | — |
 | M9 Hearing test flow + results | `:feature:hearingtest`, `:feature:results` | ❌ not started | — |
@@ -29,12 +29,27 @@
 
 ### 1.1 In flight at handoff time
 <!-- HANDOFF-INFLIGHT -->
-- **M7a `:audio:effect`**: implemented, Opus-reviewed, all 13 review items fixed on branch
-  `worktree-agent-a1e10c0639124524e` (commit 327f42e), **not merged yet**: one real-thread test
-  (`EngineBackendIntegrationTest.ladderWalksMainToFb51ToSpec40ThroughReadbackWithManySessions`) failed 2/3 runs on
-  the merged tree. The implementer is root-causing it. After that: merge, then have **Opus re-verify the P0 fixes**
-  (inherited-enable hole, bypass during create/rebuild, write spacing) before building `:service` on it.
-- **M10 `:feature:health`**: implementer running on branch `worktree-agent-a6596be0b5a307ae2`; needs a Sonnet review.
+No agents are running. Branch tip at handoff: see `git log`; `./gradlew :app:assembleDebug :app:verifyPermissions` is green
+and every merged module's `check` passed on the merged tree.
+
+**First actions for the next session (in order):**
+1. **Opus re-verification of M7a's P0 fixes** (inherited-enable hole, bypass during create/rebuild/control regain,
+   execution-time 50 ms spacing, clamp event `replay = 1`, engine single-thread + creation outside the lock). The
+   implementer also found and fixed a real lost-clamp-event bug after review, so the re-check is worth it.
+2. **Sonnet review of M10 `:feature:health`** (commit 3bfb13f). Note its forbidden-word scan exempts "diagnos" only
+   for the mandated disclaimer string.
+3. Then M7c `:service` (§3 item 1). The features after it depend on its use cases.
+
+**Engine API facts for M7c** (from M7a's final report): prefer `EffectEngine.setRoute(device, target)` on device
+changes; all setters and `retry()` are **asynchronous** (posted to a single-threaded engine scope), `acquire()` is
+synchronous; `setRunning(true)` resets the ladder to MAIN; feed the ladder back via `diagnostics.ladder` → re-plan
+with `DpEqPlanner.plan(..., ladder)` → `setTarget`; `EffectHandle.clamped` is `Flow<Int>` and `failed` is
+`StateFlow<EffectFailureKind?>`. **Health nav:** `HealthRoute(profileId: Long? = null, testId: Long? = null)`;
+Results and Profile screens should pass `profileId` (and `testId`).
+
+**What the current debug APK shows:** app shell, navigation, the expressive theme, placeholder screens for
+onboarding/home/hearing test/results/preference/profiles/settings, and the real Hearing health screen (empty state
+until a test exists, since nothing can record tests until M9). There is no system-wide processing yet (no service).
 
 ## 2. Key decisions a successor must know (details in DECISIONS.md)
 

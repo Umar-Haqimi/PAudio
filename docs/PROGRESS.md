@@ -1,5 +1,9 @@
 # PAudio progress
 
+## Status at handoff (orchestrator)
+Merged: M0, M1, M2, M3, M4, M5, M6, M7a, M7b, M8a, M10. Not started: M7c, M8b, M9, M11, M12, M13.
+Pending reviews: Opus re-verify of M7a P0 fixes; Sonnet review of M10. See `docs/HANDOFF.md` for the plan.
+
 ## Done
 
 ### M1 — Skeleton (complete)
