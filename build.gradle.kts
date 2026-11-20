@@ -23,7 +23,9 @@ subprojects {
 val verifyFeatureBoundaries = tasks.register<VerifyFeatureBoundariesTask>("verifyFeatureBoundaries") {
     group = "verification"
     description = "Fails if feature/** uses MaterialShapes, graphics-shapes or @ExperimentalMaterial3ExpressiveApi."
-    sources.from(fileTree("feature") { include("**/*.kt") })
+    // Hand-written sources only: generated code under feature/*/build is another task's output and
+    // would make this an implicit (undeclared) dependency of KSP/Hilt tasks.
+    sources.from(fileTree("feature") { include("*/src/**/*.kt"); exclude("**/build/**") })
     forbiddenPatterns.set(VerifyFeatureBoundariesTask.FORBIDDEN)
     marker.set(layout.buildDirectory.file("reports/feature-boundaries.txt"))
 }
