@@ -87,3 +87,9 @@
 - Import rejects (never truncates) >2 MB, >100 tests, >20,000 trials, nesting >32, NaN/Inf; clamps numeric ranges; recomputes `HeadsetKey`.
 - Trend filtering by `headsetKey` inside `deviceSnapshotJson` (`DeviceSnapshot.withHeadsetKey`).
 - `androidTest/MigrationTest` is ready for version 2 (not run in CI).
+
+### M7b — In-app A/B player (`:audio:playback`)
+- `ExoAbPlayer` (Media3 ExoPlayer): own audio session id set before `prepare`, ONE enabled `EffectHandle` on it via injected `EffectBackend`, `BypassToken` (RESULTS_AB / PREFERENCE_AB) held from first `play()` to `release()`, 20 ms duck on `swapTo` (rapid swaps coalesce), transient audio focus, `listenTicks` (side + delta ms) for `AbRoundGate`.
+- `AbGainPlanner`: `P_common = max(-15, -max(0, max G over ALL options) - 0.5)`; effect inputGain = `P_common - ΔL(G)` (flat: ΔL = 0). `swapTo(cfg, inputGainDb)` is passed `cfg.preampDb = P_common` and `inputGainDb = -ΔL`.
+- `LtasRepository`, `DemoClipSource` (preference loop = first 12 s), `AbPlayerFactory` (`@Inject`, app must bind `EffectBackend` + `BypassController`).
+- Build changes: catalog `androidx-media3-test-utils`; `:audio:playback` applies `paudio.hilt`, depends on `:core:dsp`, `:core:preference`; `RequiresHardware` annotation in `:testing`.
