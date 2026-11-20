@@ -41,6 +41,53 @@ class VolumeLogicTest {
     }
 
     @Test
+    fun filterSuppressesObserverThatFiresBeforeSetIndexReturns() {
+        val f = ExternalChangeFilter(7)
+        f.expectSelf(5)
+        assertThat(f.onObserved(5)).isNull() // observer fires mid-write
+        f.onSelfWrite(5)
+        assertThat(f.onObserved(5)).isNull()
+        assertThat(f.onObserved(8)).isEqualTo(8)
+        // refused request: observer sees the old value again, still not external
+        f.expectSelf(12)
+        assertThat(f.onObserved(8)).isNull()
+        f.onSelfWrite(8)
+        assertThat(f.onObserved(8)).isNull()
+    }
+
+    @Test
+    fun driftEmitsAlreadyDeviatedIndexOnCollectionStart() = runTest(UnconfinedTestDispatcher()) {
+        val vc = FakeVolumeController(maxIndex = 15, initialIndex = 9)
+        val lock = VolumeLock(vc)
+        lock.lock(7)
+        vc.externalChange(4) // before anyone collects: no replay in `changes`
+        val seen = mutableListOf<Int>()
+        val job = launch { lock.drift.collect { seen += it } }
+        assertThat(seen).containsExactly(4)
+        job.cancel()
+    }
+
+    @Test
+    fun releaseDoesNotRaiseVolumeThatWasLoweredExternally() {
+        val vc = FakeVolumeController(maxIndex = 15, initialIndex = 9)
+        val lock = VolumeLock(vc)
+        lock.lock(7)
+        vc.externalChange(4) // e.g. CSD auto-lowering
+        lock.release()
+        assertThat(vc.index()).isEqualTo(4)
+    }
+
+    @Test
+    fun releaseRestoresOriginalWhenExternalChangeWasHigher() {
+        val vc = FakeVolumeController(maxIndex = 15, initialIndex = 9)
+        val lock = VolumeLock(vc)
+        lock.lock(7)
+        vc.externalChange(12)
+        lock.release()
+        assertThat(vc.index()).isEqualTo(9)
+    }
+
+    @Test
     fun volumeLockRestoresOriginalInFinallyEvenOnException() {
         val vc = FakeVolumeController(maxIndex = 15, initialIndex = 9)
         val lock = VolumeLock(vc)
@@ -82,6 +129,6 @@ class VolumeLogicTest {
         assertThat(seen).containsExactly(4)
         job.cancel()
         lock.release()
-        assertThat(vc.index()).isEqualTo(3)
+        assertThat(vc.index()).isEqualTo(3) // 4 >= original 3: restore to original
     }
 }

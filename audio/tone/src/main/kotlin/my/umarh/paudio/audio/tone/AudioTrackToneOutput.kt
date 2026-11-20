@@ -91,24 +91,35 @@ internal class AudioTrackSink private constructor(
 @Singleton
 class AudioTrackToneOutput internal constructor(
     private val sinkFactory: (Int) -> PcmSink?,
+    private val threadInit: () -> Unit = {},
 ) : InterruptibleToneOutput {
-    @Inject constructor() : this({ AudioTrackSink.create(it) })
+    @Inject constructor() : this(
+        { AudioTrackSink.create(it) },
+        { Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO) },
+    )
 
     private val lock = Any()
     private var engine: StreamEngine? = null
+
+    // One flow for the lifetime of this object: collectors never bind to a stale engine.
     private val _playing = MutableStateFlow(false)
 
-    override val playing: StateFlow<Boolean> get() = engine?.playing ?: _playing
+    override val playing: StateFlow<Boolean> get() = _playing
 
     override suspend fun open(sampleRate: Int) {
         synchronized(lock) {
             val e = engine
+            // A failed engine reports isClosed, so it is rebuilt here.
             if (e != null && !e.isClosed && e.sampleRate == sampleRate) return
             e?.close()
+            _playing.value = false
             val sink = sinkFactory(sampleRate) ?: error("Could not create AudioTrack at $sampleRate Hz")
-            engine = StreamEngine(sink, sampleRate, threadInit = {
-                Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
-            }).also { it.start() }
+            engine = StreamEngine(
+                sink, sampleRate,
+                threadInit = threadInit,
+                sinkFactory = { sinkFactory(sampleRate) },
+                playingFlow = _playing,
+            ).also { it.start() }
         }
     }
 
@@ -133,5 +144,6 @@ class AudioTrackToneOutput internal constructor(
     override fun close() {
         val e = synchronized(lock) { engine.also { engine = null } }
         e?.close()
+        _playing.value = false
     }
 }

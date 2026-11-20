@@ -8,13 +8,14 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.Dispatchers
 import my.umarh.paudio.core.model.NoiseMeter
 import javax.inject.Inject
 import kotlin.math.log10
@@ -25,6 +26,9 @@ enum class NoiseLevel {
     QUIET,
     OK,
     TOO_NOISY,
+
+    /** No usable reading (muted / privacy-toggled mic, NaN). */
+    UNKNOWN,
     ;
 
     companion object {
@@ -35,7 +39,7 @@ enum class NoiseLevel {
         const val NOISY_FROM_DBFS = -45f
 
         fun classify(dbfs: Float): NoiseLevel = when {
-            dbfs.isNaN() -> OK
+            dbfs.isNaN() -> UNKNOWN
             dbfs < QUIET_BELOW_DBFS -> QUIET
             dbfs < NOISY_FROM_DBFS -> OK
             else -> TOO_NOISY
@@ -45,6 +49,12 @@ enum class NoiseLevel {
 
 object NoiseMath {
     const val FLOOR_DBFS = -120f
+
+    /** True if the first [n] samples are all exactly zero: a muted / privacy-blocked mic, not a quiet room. */
+    fun isAllZero(samples: ShortArray, n: Int = samples.size): Boolean {
+        for (i in 0 until n) if (samples[i].toInt() != 0) return false
+        return true
+    }
 
     /** RMS of the first [n] samples of 16-bit PCM in dBFS (full scale sine = -3 dBFS), floored at [FLOOR_DBFS]. */
     fun rmsDbfs(samples: ShortArray, n: Int = samples.size): Float {
@@ -64,9 +74,11 @@ object NoiseMath {
  * reduced to a number in memory, never stored, logged or persisted (SPEC §6). Without RECORD_AUDIO, or if the
  * mic cannot be opened (in use by a call), the flow is empty.
  */
-class AndroidNoiseMeter @Inject constructor(
-    @ApplicationContext private val context: Context,
+class AndroidNoiseMeter(
+    private val context: Context,
+    private val ioDispatcher: CoroutineDispatcher,
 ) : NoiseMeter {
+    @Inject constructor(@ApplicationContext context: Context) : this(context, Dispatchers.IO)
 
     override fun levels(): Flow<Float> {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) !=
@@ -77,28 +89,41 @@ class AndroidNoiseMeter @Inject constructor(
         return flow {
             val record = openRecord() ?: return@flow
             try {
-                val rate = record.sampleRate
-                val chunk = rate / 10
+                val chunk = record.sampleRate / 10
                 val buf = ShortArray(chunk)
-                record.startRecording()
-                if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) return@flow
+                if (!startQuietly(record)) return@flow
                 while (true) {
                     currentCoroutineContext().ensureActive()
-                    var got = 0
-                    while (got < chunk) {
-                        val n = record.read(buf, got, chunk - got)
-                        if (n < 0) return@flow
-                        got += n
-                    }
+                    if (!readChunk(record, buf, chunk)) return@flow
+                    // All-zero = muted / privacy-toggled mic: not a measurement, so emit nothing.
+                    if (NoiseMath.isAllZero(buf, chunk)) continue
                     emit(NoiseMath.rmsDbfs(buf, chunk))
                 }
-            } catch (_: IllegalStateException) {
-                // Mic taken away mid-stream: end the flow quietly.
             } finally {
                 try { record.stop() } catch (_: IllegalStateException) { }
                 record.release()
             }
-        }.flowOn(Dispatchers.IO)
+        }.flowOn(ioDispatcher)
+    }
+
+    private fun startQuietly(record: AudioRecord): Boolean = try {
+        record.startRecording()
+        record.recordingState == AudioRecord.RECORDSTATE_RECORDING
+    } catch (_: IllegalStateException) {
+        false
+    }
+
+    /** False when the mic was taken away or errored; the flow then ends quietly. */
+    private fun readChunk(record: AudioRecord, buf: ShortArray, chunk: Int): Boolean = try {
+        var got = 0
+        while (got < chunk) {
+            val n = record.read(buf, got, chunk - got)
+            if (n < 0) return false
+            got += n
+        }
+        true
+    } catch (_: IllegalStateException) {
+        false
     }
 
     @Suppress("MissingPermission")

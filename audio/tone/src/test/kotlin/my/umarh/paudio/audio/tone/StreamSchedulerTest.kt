@@ -104,6 +104,13 @@ class StreamSchedulerTest {
     }
 
     @Test
+    fun pcm16NeverDithersExactZero() {
+        val dst = ShortArray(10_000) { 5 }
+        Pcm16.convert(FloatArray(10_000), dst, 10_000)
+        assertThat(dst.all { it == 0.toShort() }).isTrue()
+    }
+
+    @Test
     fun pcm16ConversionClampsAndDithersAtMostOneLsb() {
         val src = floatArrayOf(0f, 0.5f, 1.5f, -1.5f)
         val dst = ShortArray(4)

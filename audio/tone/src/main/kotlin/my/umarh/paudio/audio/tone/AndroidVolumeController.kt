@@ -52,8 +52,10 @@ class AndroidVolumeController(
     override fun index(): Int = am.getStreamVolume(AudioManager.STREAM_MUSIC)
 
     override fun setIndex(i: Int): Int {
+        val target = i.coerceIn(minIndex, maxIndex)
+        filter.expectSelf(target)
         try {
-            am.setStreamVolume(AudioManager.STREAM_MUSIC, i.coerceIn(minIndex, maxIndex), 0)
+            am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
         } catch (_: SecurityException) {
             // e.g. Do-Not-Disturb policy access quirks: report whatever is in effect.
         } catch (_: RuntimeException) {
@@ -68,8 +70,9 @@ class AndroidVolumeController(
         val max = maxIndex
         if (i !in min..max) return null
         val type = deviceType()
-        val curve = curves.getOrPut(type) {
-            VolumeCurve.validate((min..max).map { raw(it, type) })
+        val curve = curves[type] ?: VolumeCurve.validate((min..max).map { raw(it, type) }).also {
+            // An all-null curve may be transient (audio policy not ready); don't cache it forever.
+            if (it.any { v -> v != null }) curves[type] = it
         }
         return curve.getOrNull(i - min)
     }

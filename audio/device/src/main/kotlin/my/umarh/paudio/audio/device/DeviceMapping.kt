@@ -51,6 +51,9 @@ object DeviceMapping {
         else -> 6
     }
 
+    /** API 33+: the platform already ordered the media route; trust its first entry. */
+    fun firstOf(candidates: List<DeviceCandidate>): OutputDevice? = candidates.firstOrNull()?.let(::toOutputDevice)
+
     fun toOutputDevice(c: DeviceCandidate): OutputDevice {
         val type = typeOf(c.type)
         return OutputDevice(type, c.productName.trim(), addressSuffix(type, c.address))

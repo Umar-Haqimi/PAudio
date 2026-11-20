@@ -7,6 +7,8 @@ import android.os.Handler
 import android.os.Looper
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -47,16 +49,28 @@ class AudioFocusMonitor @Inject constructor(@ApplicationContext context: Context
     private val lock = Any()
     private var request: AudioFocusRequest? = null
 
+    private val _latest = MutableStateFlow<FocusEvent?>(null)
+
+    /** Live stream of focus changes (no replay). */
     val events: SharedFlow<FocusEvent> = _events
+
+    /** The most recent focus change since [request], so a change before collection is not lost. */
+    val latest: StateFlow<FocusEvent?> = _latest
+
+    private fun publish(e: FocusEvent) {
+        _latest.value = e
+        _events.tryEmit(e)
+    }
 
     fun request(exclusive: Boolean = true): Boolean = synchronized(lock) {
         if (request != null) return true
+        _latest.value = null
         val gain = if (exclusive) AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE else AudioManager.AUDIOFOCUS_GAIN
         val r = AudioFocusRequest.Builder(gain)
             .setAudioAttributes(AudioTrackSink.MEDIA_ATTRIBUTES)
             .setAcceptsDelayedFocusGain(false)
             .setOnAudioFocusChangeListener(
-                { c -> FocusEvent.from(c)?.let { _events.tryEmit(it) } },
+                { c -> FocusEvent.from(c)?.let(::publish) },
                 Handler(Looper.getMainLooper()),
             )
             .build()

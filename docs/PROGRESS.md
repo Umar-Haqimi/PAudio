@@ -86,3 +86,5 @@
 - `:audio:device`: `DeviceMapping`, `AndroidOutputDevices`, `AndroidEnvironmentChecks` + `EnvironmentVerdict`, `AndroidNoiseMeter` + `NoiseLevel`, Hilt `DeviceModule`.
 - `:core:model`: added `InterruptibleToneOutput` (extension of `ToneOutput`); `:testing`: `RequiresHardware`, `FakeToneOutput` implements the extension.
 - Hardware tests (`@RequiresHardware`) in `audio/tone/src/androidTest`; exclude in CI via `-Pandroid.testInstrumentationRunnerArguments.notAnnotation=my.umarh.paudio.testing.RequiresHardware`.
+- M6 review fixes: engine failure recovery (dead-object sink re-creation once, failed engine rebuilt by `open()`), single stable `playing` flow, orphan-waiter/close races, echo suppression (`expectSelf`), `VolumeLock` initial drift + no raising after external lowering, exact-zero silence in 16-bit path, head-reset detection, muted-mic noise chunks skipped.
+- Device verification gap: Samsung `mono_audio` setting key is not covered by `AndroidEnvironmentChecks` (only `master_mono`).

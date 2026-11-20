@@ -1,6 +1,10 @@
 package my.umarh.paudio.audio.tone
 
-import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.launch
+import my.umarh.paudio.core.model.VolumeController
 
 /**
  * Pure validity check for `AudioManager.getStreamVolumeDb` curves (docs/DECISIONS.md §4). The curve is only a
@@ -23,24 +27,42 @@ object VolumeCurve {
 }
 
 /**
- * Filters [android.database.ContentObserver]/broadcast callbacks down to EXTERNAL changes: our own
- * `setIndex` records the read-back as known, so the echo notifications that follow are suppressed.
+ * Filters [android.database.ContentObserver]/broadcast callbacks down to EXTERNAL changes. Around our own write:
+ * [expectSelf] BEFORE `setStreamVolume` (an observer may fire before it returns), [onSelfWrite] with the
+ * read-back afterwards. All state is compared under one lock.
  */
 class ExternalChangeFilter(initial: Int) {
-    private val known = AtomicInteger(initial)
+    private val lock = Any()
+    private var known = initial
+    private var pendingSelf: Int? = null
 
-    /** Called after our own write with the index read back. */
-    fun onSelfWrite(effective: Int) = known.set(effective)
+    fun expectSelf(requested: Int) = synchronized(lock) { pendingSelf = requested }
 
-    /** Returns [current] if it differs from what we know (an external change), else null. */
-    fun onObserved(current: Int): Int? = if (known.getAndSet(current) != current) current else null
+    fun onSelfWrite(effective: Int) = synchronized(lock) {
+        known = effective
+        pendingSelf = null
+    }
+
+    /** Returns [current] if it is an external change, else null. */
+    fun onObserved(current: Int): Int? = synchronized(lock) {
+        if (pendingSelf == current) {
+            known = current
+            return null
+        }
+        if (known == current) return null
+        known = current
+        current
+    }
 }
 
 /**
  * Pins STREAM_MUSIC to the calibrated index for the duration of a test and restores the user's original index
  * afterwards. Use [withLock] (restores in `finally`) or call [release] from your own finally block.
+ *
+ * Hearing safety: [release] restores the ORIGINAL index, but never raises the volume when something else (user,
+ * system, CSD auto-lowering) changed it to below the original while locked.
  */
-class VolumeLock(private val controller: my.umarh.paudio.core.model.VolumeController) {
+class VolumeLock(private val controller: VolumeController) {
     private val lock = Any()
     private var original: Int? = null
 
@@ -49,16 +71,22 @@ class VolumeLock(private val controller: my.umarh.paudio.core.model.VolumeContro
         private set
 
     /**
-     * External changes away from the locked index (user keys, headset, CSD auto-lowering). Emits the observed
-     * index. Nothing is emitted while unlocked.
+     * Deviations from the locked index (user keys, headset, CSD auto-lowering): emits the observed index. If the
+     * index already differs when collection starts, that is emitted first (the underlying flow has no replay).
+     * Nothing is emitted while unlocked.
      */
-    val drift: kotlinx.coroutines.flow.Flow<Int> =
-        kotlinx.coroutines.flow.flow {
+    val drift: Flow<Int> = channelFlow {
+        val job = launch(start = CoroutineStart.UNDISPATCHED) {
             controller.changes.collect { idx ->
                 val locked = lockedIndex
-                if (locked != null && idx != locked) emit(idx)
+                if (locked != null && idx != locked) send(idx)
             }
         }
+        val locked = lockedIndex
+        val now = controller.index()
+        if (locked != null && now != locked) send(now)
+        job.join()
+    }
 
     /** Remembers the original index (first call only), sets [index]; returns the effective (read-back) index. */
     fun lock(index: Int): Int = synchronized(lock) {
@@ -68,15 +96,20 @@ class VolumeLock(private val controller: my.umarh.paudio.core.model.VolumeContro
         effective
     }
 
-    /** Idempotent. Restores the original index if we had changed it. */
+    /** Idempotent. Restores the original index (see class doc for the safety exception). */
     fun release() {
         val orig: Int?
+        val locked: Int?
         synchronized(lock) {
             orig = original
+            locked = lockedIndex
             original = null
             lockedIndex = null
         }
-        if (orig != null) controller.setIndex(orig)
+        if (orig == null) return
+        val now = controller.index()
+        val loweredExternally = locked != null && now != locked && now < orig
+        if (!loweredExternally) controller.setIndex(orig)
     }
 
     inline fun <T> withLock(index: Int, block: (effective: Int) -> T): T {

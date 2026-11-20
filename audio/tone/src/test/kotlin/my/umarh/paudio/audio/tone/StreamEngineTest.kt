@@ -9,67 +9,76 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import my.umarh.paudio.core.model.StereoBuffer
 import org.junit.Test
-import java.util.concurrent.atomic.AtomicLong
-
-/** Sink that "plays" in real time: each write of N frames takes N/rate seconds, head = frames written. */
-private class RealTimeSink(val rate: Int) : PcmSink {
-    private val written = AtomicLong()
-    val samples = java.util.Collections.synchronizedList(ArrayList<Float>())
-    @Volatile var released = 0
-    @Volatile var stopped = 0
-
-    override fun write(interleaved: FloatArray, frames: Int): Int {
-        Thread.sleep(maxOf(1L, frames * 1000L / rate / 2)) // 2x real time to keep tests short
-        for (i in 0 until frames) samples += interleaved[2 * i]
-        written.addAndGet(frames.toLong())
-        return frames
-    }
-
-    override val playedFrames: Long get() = written.get()
-    override fun start() {}
-    override fun stop() { stopped++ }
-    override fun release() { released++ }
-}
 
 class StreamEngineTest {
     private val rate = 48_000
     private fun tone(frames: Int) = StereoBuffer(FloatArray(frames) { 0.5f }, FloatArray(frames) { 0.5f }, rate)
 
+    private suspend fun failure(block: suspend () -> Unit): Throwable? =
+        try { withTimeout(3_000) { block() }; null } catch (e: Throwable) { e }
+
     @Test
     fun playReturnsAfterStimulusPlayedAndStreamKeepsRunning() = runBlocking {
-        val sink = RealTimeSink(rate)
+        val sink = FakeSink(rate)
         val e = StreamEngine(sink, rate)
         e.start()
         withTimeout(5_000) { e.play(tone(4800)) }
-        val after = sink.playedFrames
+        val after = sink.framesWritten
         Thread.sleep(50)
-        assertThat(sink.playedFrames).isGreaterThan(after) // still streaming silence
+        assertThat(sink.framesWritten).isGreaterThan(after) // still streaming silence
         e.close()
     }
 
     @Test
     fun playingFlagIsTrueDuringStimulusOnly() = runBlocking {
-        val sink = RealTimeSink(rate)
+        val sink = FakeSink(rate)
         val e = StreamEngine(sink, rate)
         e.start()
         val seen = async(Dispatchers.Default) {
             var sawTrue = false
-            val end = System.currentTimeMillis() + 3000
+            val end = System.currentTimeMillis() + 1500
             while (System.currentTimeMillis() < end) {
                 if (e.playing.value) sawTrue = true
                 Thread.sleep(1)
             }
             sawTrue
         }
-        e.play(tone(48_000))
+        e.play(tone(24_000))
         assertThat(e.playing.value).isFalse()
         assertThat(seen.await()).isTrue()
         e.close()
     }
 
     @Test
+    fun playCompletesOnlyOnceHeadReachesEndAndPlayingStaysTrueThroughLag() = runBlocking {
+        val lag = 9_600 // 200 ms behind the writes
+        val sink = FakeSink(rate, lagFrames = lag)
+        val e = StreamEngine(sink, rate)
+        e.start()
+        val stimulus = 4_800
+        val t = async(Dispatchers.Default) {
+            e.play(tone(stimulus))
+            sink.playedFrames to e.playing.value
+        }
+        // Sample `playing` until play returns; once true it must stay true until completion.
+        var seenTrue = false
+        var droppedEarly = false
+        while (!t.isCompleted) {
+            val p = e.playing.value
+            if (p) seenTrue = true else if (seenTrue && sink.playedFrames < stimulus) droppedEarly = true
+            Thread.sleep(1)
+        }
+        val (head, playingAtEnd) = t.await()
+        assertThat(seenTrue).isTrue()
+        assertThat(droppedEarly).isFalse()
+        assertThat(head).isAtLeast(stimulus.toLong()) // started at frame 0 -> ends at 4800
+        assertThat(playingAtEnd).isFalse()
+        e.close()
+    }
+
+    @Test
     fun cancellingPlayRampsToSilenceAndCloseIsIdempotent() = runBlocking {
-        val sink = RealTimeSink(rate)
+        val sink = FakeSink(rate)
         val e = StreamEngine(sink, rate)
         e.start()
         val job = async(Dispatchers.Default) { e.play(tone(480_000)) }
@@ -87,8 +96,7 @@ class StreamEngineTest {
 
     @Test
     fun stopCurrentCompletesPendingPlayNormally() = runBlocking {
-        val sink = RealTimeSink(rate)
-        val e = StreamEngine(sink, rate)
+        val e = StreamEngine(FakeSink(rate), rate)
         e.start()
         val play = async(Dispatchers.Default) { e.play(tone(480_000)) }
         Thread.sleep(100)
@@ -99,15 +107,99 @@ class StreamEngineTest {
 
     @Test
     fun closeWhilePlayingFailsPlayWithCancellationAndPlayAfterCloseThrows() = runBlocking {
-        val sink = RealTimeSink(rate)
-        val e = StreamEngine(sink, rate)
+        val e = StreamEngine(FakeSink(rate), rate)
         e.start()
         val play = async(Dispatchers.Default) { runCatching { e.play(tone(480_000)) } }
         Thread.sleep(50)
         e.close()
         assertThat(play.await().exceptionOrNull()).isInstanceOf(CancellationException::class.java)
-        var threw = false
-        try { e.play(tone(10)) } catch (_: IllegalStateException) { threw = true }
-        assertThat(threw).isTrue()
+        assertThat(failure { e.play(tone(10)) }).isInstanceOf(IllegalStateException::class.java)
+    }
+
+    @Test
+    fun writeErrorMarksEngineFailedAndPlayThrowsInsteadOfHanging() = runBlocking {
+        val sink = FakeSink(rate, failAfterWrites = 2, failCode = -6)
+        val e = StreamEngine(sink, rate) // no factory: cannot recover
+        e.start()
+        Thread.sleep(100)
+        assertThat(e.isClosed).isTrue()
+        assertThat(failure { e.play(tone(100)) }).isInstanceOf(IllegalStateException::class.java)
+        assertThat(sink.released).isAtLeast(1)
+        e.close() // still safe
+    }
+
+    @Test
+    fun writeErrorWhilePlayingFailsThePendingPlay() = runBlocking {
+        val sink = FakeSink(rate, failAfterWrites = 30, failCode = -3)
+        val e = StreamEngine(sink, rate)
+        e.start()
+        val err = failure { e.play(tone(480_000)) }
+        assertThat(err).isInstanceOf(IllegalStateException::class.java)
+        assertThat(e.isClosed).isTrue()
+    }
+
+    @Test
+    fun deadObjectRecreatesSinkOnceAndStreamSurvives() = runBlocking {
+        val second = FakeSink(rate)
+        var created = 0
+        val e = StreamEngine(FakeSink(rate, failAfterWrites = 30, failCode = -6), rate, sinkFactory = {
+            created++
+            second
+        })
+        e.start()
+        // The stimulus in flight when the track died is lost...
+        assertThat(failure { e.play(tone(480_000)) }).isInstanceOf(IllegalStateException::class.java)
+        assertThat(e.isClosed).isFalse()
+        // ...but the stream lives and the next stimulus plays on the new sink.
+        withTimeout(3_000) { e.play(tone(2_400)) }
+        assertThat(created).isEqualTo(1)
+        assertThat(e.sinkRecreations).isEqualTo(1)
+        assertThat(second.samples.any { it == 0.5f }).isTrue()
+        e.close()
+    }
+
+    @Test
+    fun deadObjectWithFailingFactoryFailsEngine() = runBlocking {
+        val e = StreamEngine(FakeSink(rate, failAfterWrites = 5), rate, sinkFactory = { null })
+        e.start()
+        Thread.sleep(100)
+        assertThat(e.isClosed).isTrue()
+        assertThat(failure { e.play(tone(10)) }).isInstanceOf(IllegalStateException::class.java)
+    }
+
+    @Test
+    fun invalidStimulusDoesNotLeaveAnOrphanWaiter() = runBlocking {
+        val e = StreamEngine(FakeSink(rate), rate)
+        e.start()
+        val bad = StereoBuffer(FloatArray(10), FloatArray(10), 44_100)
+        assertThat(failure { e.play(bad) }).isInstanceOf(IllegalArgumentException::class.java)
+        withTimeout(3_000) { e.play(tone(480)) } // engine unaffected
+        e.close()
+    }
+
+    @Test
+    fun playRacingCloseNeverHangs() = runBlocking {
+        repeat(30) {
+            val e = StreamEngine(FakeSink(rate), rate)
+            e.start()
+            val p = async(Dispatchers.Default) { runCatching { e.play(tone(48_000)) } }
+            if (it % 2 == 0) Thread.sleep(1)
+            e.close()
+            withTimeout(3_000) { p.await() } // must complete (normally or exceptionally)
+        }
+    }
+
+    @Test
+    fun headMovingBackwardsFailsPendingAndRebases() = runBlocking {
+        val sink = FakeSink(rate)
+        val e = StreamEngine(sink, rate)
+        e.start()
+        val p = async(Dispatchers.Default) { runCatching { e.play(tone(480_000)) } }
+        Thread.sleep(100)
+        sink.resetHead()
+        assertThat(withTimeout(3_000) { p.await() }.exceptionOrNull()).isInstanceOf(IllegalStateException::class.java)
+        assertThat(e.isClosed).isFalse()
+        withTimeout(3_000) { e.play(tone(2_400)) }
+        e.close()
     }
 }

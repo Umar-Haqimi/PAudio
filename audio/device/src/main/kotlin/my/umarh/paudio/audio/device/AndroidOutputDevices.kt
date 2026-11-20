@@ -42,6 +42,7 @@ class AndroidOutputDevices @Inject constructor(@ApplicationContext context: Cont
     }
 
     private fun compute(): OutputDevice? {
+        val platformOrdered = Build.VERSION.SDK_INT >= 33
         val infos: List<AudioDeviceInfo> = try {
             if (Build.VERSION.SDK_INT >= 33) {
                 val attrs = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
@@ -53,8 +54,7 @@ class AndroidOutputDevices @Inject constructor(@ApplicationContext context: Cont
         } catch (_: RuntimeException) {
             emptyList()
         }
-        return DeviceMapping.pickCurrent(
-            infos.map { DeviceCandidate(it.type, it.productName?.toString().orEmpty(), it.address.orEmpty()) },
-        )
+        val candidates = infos.map { DeviceCandidate(it.type, it.productName?.toString().orEmpty(), it.address.orEmpty()) }
+        return if (platformOrdered) DeviceMapping.firstOf(candidates) else DeviceMapping.pickCurrent(candidates)
     }
 }

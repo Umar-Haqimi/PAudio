@@ -86,6 +86,24 @@ class DeviceLogicTest {
     }
 
     @Test
+    fun allZeroChunkIsNotAMeasurementAndNanIsUnknown() {
+        assertThat(NoiseMath.isAllZero(ShortArray(50))).isTrue()
+        assertThat(NoiseMath.isAllZero(ShortArray(50).also { it[49] = 1 })).isFalse()
+        assertThat(NoiseMath.isAllZero(ShortArray(50).also { it[49] = 1 }, 49)).isTrue()
+        assertThat(NoiseLevel.classify(Float.NaN)).isEqualTo(NoiseLevel.UNKNOWN)
+    }
+
+    @Test
+    fun firstOfTrustsPlatformOrder() {
+        val list = listOf(
+            DeviceCandidate(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER, "spk", ""),
+            DeviceCandidate(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, "bt", "AA:BB:CC:DD:EE:FF"),
+        )
+        assertThat(DeviceMapping.firstOf(list)!!.productName).isEqualTo("spk")
+        assertThat(DeviceMapping.firstOf(emptyList())).isNull()
+    }
+
+    @Test
     fun verdict() {
         assertThat(EnvironmentVerdict.of(EnvSnapshot(false, 0f, false, false)).isBlocking).isFalse()
         val v = EnvironmentVerdict.of(EnvSnapshot(mono = true, balance = -0.2f, spatializerOn = true, dndOn = true))
