@@ -1,6 +1,7 @@
 package my.umarh.paudio.core.model
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.time.Duration
 
@@ -50,8 +51,24 @@ interface NoiseMeter {
 }
 
 interface EffectBackend {
+    /**
+     * Creates a DISABLED effect configured with [cfg].
+     * @throws EffectCreationException when the effect can't be created (conflict with another EQ app or refusal).
+     */
     fun create(session: Int, cfg: EqConfig): EffectHandle
 }
+
+/** Why [EffectBackend.create] failed (DECISIONS §3 conflict detection (a)). */
+enum class EffectFailureKind {
+    /** Another effect with ≥ priority owns the engine (`UnsupportedOperationException` from the constructor). */
+    CONFLICT,
+
+    /** The audio system refused the effect (also after the MBC-passthrough retry). */
+    CREATION_FAILED,
+}
+
+class EffectCreationException(val kind: EffectFailureKind, message: String? = null, cause: Throwable? = null) :
+    RuntimeException(message ?: kind.name, cause)
 
 interface EffectHandle {
     fun apply(cfg: EqConfig)
@@ -59,6 +76,18 @@ interface EffectHandle {
 
     /** true while this handle has control of the underlying effect (SPEC §2.2 trap 15). */
     val control: StateFlow<Boolean>
+
+    /**
+     * One event per read-back that showed the HAL clamped/altered the band layout (DECISIONS §1 fallback ladder),
+     * carrying the band count that was found clamped. The engine steps down the ladder at most once per band
+     * count. Default: never.
+     */
+    val clamped: Flow<Int> get() = emptyFlow()
+
+    /** Non-null when the handle failed after creation (e.g. a ladder rebuild was refused). Default: never. */
+    val failed: StateFlow<EffectFailureKind?> get() = NeverFailed
+
+    /** Idempotent. */
     fun release()
 }
 
@@ -73,3 +102,5 @@ interface AbPlayer {
     fun pause()
     fun release()
 }
+
+private val NeverFailed: StateFlow<EffectFailureKind?> = kotlinx.coroutines.flow.MutableStateFlow(null)
