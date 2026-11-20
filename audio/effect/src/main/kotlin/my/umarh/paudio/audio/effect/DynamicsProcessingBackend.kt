@@ -173,7 +173,7 @@ internal class DpEffectHandle(
 
     private val _control = MutableStateFlow(true)
     override val control: StateFlow<Boolean> = _control
-    private val _clamped = MutableSharedFlow<Int>(extraBufferCapacity = 16)
+    private val _clamped = MutableSharedFlow<Int>(replay = 1, extraBufferCapacity = 16)
     override val clamped: Flow<Int> = _clamped
     private val _failed = MutableStateFlow<EffectFailureKind?>(null)
     override val failed: StateFlow<EffectFailureKind?> = _failed
