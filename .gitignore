@@ -26,3 +26,4 @@ __pycache__/
 captures/
 .externalNativeBuild/
 .cxx/
+tools/assets/.cache/
