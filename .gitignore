@@ -26,3 +26,6 @@ __pycache__/
 captures/
 .externalNativeBuild/
 .cxx/
+
+# Agent worktrees (local only)
+.claude/worktrees/
