@@ -26,7 +26,9 @@ object DspGrid {
 
     /**
      * Linear interpolation of per-grid-point [values] in log2(f); the end values are held outside
-     * 20 Hz … [freqHz]([POINTS]−1) (SPEC §2.1.4 / DECISIONS §1, "hold ends").
+     * 20 Hz … [freqHz]([POINTS]−1) (SPEC §2.1.4 / DECISIONS §1, "hold ends"):
+     * below 20 Hz the first value is returned, above the last grid point (≈19.7 kHz) the last
+     * value — no extrapolation.
      */
     fun interpolate(values: DoubleArray, fHz: Double): Double {
         require(values.size == POINTS) { "expected $POINTS grid values, got ${values.size}" }

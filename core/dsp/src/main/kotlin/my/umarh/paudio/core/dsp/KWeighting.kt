@@ -1,5 +1,7 @@
 package my.umarh.paudio.core.dsp
 
+import kotlin.math.pow
+
 /**
  * ITU-R BS.1770 K-weighting magnitude (SPEC §2.1.5): pre-filter (high-shelf) cascaded with the RLB
  * high-pass, Annex 1 coefficients for fs = 48 kHz. The −0.691 dB loudness constant is not applied.
@@ -22,5 +24,5 @@ object KWeighting {
             biquadMagnitudeDb(1.0, -2.0, 1.0, 1.0, RLB_A1, RLB_A2, fHz, FS)
 
     /** `|K(f)|²` (power gain, linear). */
-    fun powerGain(fHz: Double): Double = Math.pow(10.0, magnitudeDb(fHz) / 10.0)
+    fun powerGain(fHz: Double): Double = 10.0.pow(magnitudeDb(fHz) / 10.0)
 }

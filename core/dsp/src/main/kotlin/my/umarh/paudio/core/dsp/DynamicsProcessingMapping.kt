@@ -3,6 +3,7 @@ package my.umarh.paudio.core.dsp
 import kotlin.math.floor
 import kotlin.math.log10
 import kotlin.math.pow
+import kotlin.math.sqrt
 
 /**
  * FFT block size the platform DynamicsProcessing engine ends up with (DECISIONS §1.2; mirrors
@@ -21,6 +22,8 @@ fun dpBlockSize(fs: Int, frameMs: Float): Int {
 
 /** `numpy.geomspace(start, stop, num)` (log10/linspace/pow construction, exact end points). */
 internal fun geomspace(start: Double, stop: Double, num: Int): DoubleArray {
+    require(num >= 2) { "geomspace needs num >= 2" }
+    require(start > 0.0 && stop > 0.0) { "geomspace needs positive bounds" }
     val ls = log10(start)
     val step = (log10(stop) - ls) / (num - 1)
     val r = DoubleArray(num) { 10.0.pow(it * step + ls) }
@@ -29,20 +32,50 @@ internal fun geomspace(start: Double, stop: Double, num: Int): DoubleArray {
     return r
 }
 
+/** Native bin stop of a cutoff: `(int)(0.5f + cutoff·N/fs)` in float32 (DPFrequency.cpp:91-95). */
+internal fun nativeBinStop(cutoffHz: Double, blockSize: Int, fs: Int): Int =
+    (0.5f + cutoffHz.toFloat() * blockSize / fs).toInt()
+
 /**
  * PreEQ band layout, shared by both ears (DECISIONS §1.5 "Decision", SPEC §2.1.4 as overridden).
  * Band `b` covers FFT bins `(stops[b-1], stops[b]]`, band 0 is bin 0; `cutoffHz[b] = stops[b]·fs/N`
- * exactly, so the last cutoff of the main layouts is exactly `fs/2`.
+ * exactly, so the last cutoff of the main layouts is exactly `fs/2`. Build via the factories only.
+ *
+ * Invariants (checked at construction): every stop equals the native float32 bin stop of its cutoff,
+ * the last cutoff is ≥ fs/2, and unless [degenerate] the stops are strictly increasing.
  */
-class DpBandLayout(
+class DpBandLayout private constructor(
     val fs: Int,
     val blockSize: Int,
-    /** Native bin stop of every band (`(int)(0.5 + cutoff·N/fs)`). */
+    /** Native bin stop of every band (`(int)(0.5f + cutoff·N/fs)`). */
     val stops: IntArray,
     /** Band top edges in Hz, what is passed to `EqBand.cutoffFrequency`. */
     val cutoffHz: DoubleArray,
+    /** True only for [spec40], whose sub-bin bands may repeat stops (DECISIONS §1.5 pitfall). */
+    val degenerate: Boolean,
 ) {
+    init {
+        require(stops.size == cutoffHz.size && stops.isNotEmpty()) { "stops/cutoffs mismatch" }
+        for (i in stops.indices) {
+            require(stops[i] == nativeBinStop(cutoffHz[i], blockSize, fs)) { "stop $i does not match its cutoff" }
+            if (!degenerate && i > 0) require(stops[i] > stops[i - 1]) { "stops must be strictly increasing" }
+        }
+        require(cutoffHz.last() >= fs / 2.0) { "last cutoff must be >= fs/2" }
+    }
+
     val bandCount: Int get() = stops.size
+
+    /** Number of bands that actually receive at least one bin in the native loop. */
+    val effectiveBandCount: Int
+        get() {
+            var next = 0
+            var n = 0
+            for (s in stops) {
+                if (s >= next && next <= blockSize / 2) n++
+                next = s + 1
+            }
+            return n
+        }
 
     companion object {
         /** Preferred layout: `[0] + unique(round(geomspace(1, N/2, target)))`, 87 bands at N = 1024. */
@@ -52,7 +85,7 @@ class DpBandLayout(
             for (x in g) set.add(Math.rint(x).toInt()) // half-to-even like numpy.round
             val stops = IntArray(set.size + 1)
             set.forEachIndexed { i, s -> stops[i + 1] = s }
-            return DpBandLayout(fs, blockSize, stops, DoubleArray(stops.size) { stops[it] * fs.toDouble() / blockSize })
+            return DpBandLayout(fs, blockSize, stops, DoubleArray(stops.size) { stops[it] * fs.toDouble() / blockSize }, false)
         }
 
         /** First fallback: 51 bands at N = 1024 (`geomspace(…, 64)`). */
@@ -61,12 +94,12 @@ class DpBandLayout(
         /**
          * Last-resort fallback: the spec 40-band layout `c_k = 20·2^((k+1)/4)` (k = 0..38),
          * `c_39 = fs/2`. Bands below ~490 Hz are narrower than a bin, so stops may repeat
-         * (DECISIONS §1.5 pitfall) — reduced precision, kept only as a ladder step.
+         * (degenerate) — reduced precision, kept only as a ladder step.
          */
         fun spec40(fs: Int, blockSize: Int): DpBandLayout {
             val cut = DoubleArray(40) { if (it < 39) 20.0 * 2.0.pow((it + 1) / 4.0) else fs / 2.0 }
-            val stops = IntArray(40) { floor(0.5 + cut[it] * blockSize / fs).toInt() }
-            return DpBandLayout(fs, blockSize, stops, cut)
+            val stops = IntArray(40) { nativeBinStop(cut[it], blockSize, fs) }
+            return DpBandLayout(fs, blockSize, stops, cut, true)
         }
     }
 }
@@ -113,7 +146,7 @@ object DpReconstruction {
         var binNext = 0
         for (b in 0 until layout.bandCount) {
             val start = binNext
-            val stop = floor(0.5 + layout.cutoffHz[b] * layout.blockSize / layout.fs).toInt()
+            val stop = nativeBinStop(layout.cutoffHz[b], layout.blockSize, layout.fs)
             binNext = stop + 1
             for (k in start..minOf(stop, half)) bins[k] = bandGainsDb[b].toDouble()
         }
@@ -150,6 +183,6 @@ object DpReconstruction {
             acc += e * e
             n++
         }
-        return kotlin.math.sqrt(acc / n)
+        return sqrt(acc / n)
     }
 }

@@ -23,6 +23,8 @@ class HearingCompensation(hlEst: DoubleArray, strength: Double) {
 
     init {
         require(hlEst.size == TEST_FREQUENCIES_HZ.size) { "need ${TEST_FREQUENCIES_HZ.size} HL values" }
+        require(hlEst.all { it.isFinite() }) { "HL values must be finite" }
+        require(strength.isFinite() && strength in 0.0..1.0) { "strength must be in 0..1" }
         knotGainsDb = DoubleArray(hlEst.size) { (strength * hlEst[it]).coerceIn(KNOT_MIN_DB, KNOT_MAX_DB) }
         pchip = Pchip(DoubleArray(hlEst.size) { log2(TEST_FREQUENCIES_HZ[it]) }, knotGainsDb)
     }
@@ -81,6 +83,7 @@ object CurveBuilder {
         gP: Double,
         gT: Double,
     ): CurveResult {
+        require(gB.isFinite() && gP.isFinite() && gT.isFinite()) { "preference gains must be finite" }
         val gp = PreferenceCurve(gB, gP, gT).onGrid()
         val ghL = HearingCompensation(hlLeft, strength).onGrid()
         val ghR = HearingCompensation(hlRight, strength).onGrid()

@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
 import kotlinx.serialization.json.jsonObject
 import org.junit.Test
+import kotlin.math.pow
 
 /** Golden set 5c (g_h, G, preamp) and focused unit tests for the §2.1.3 rules. */
 class CurveGoldenTest {
@@ -13,7 +14,7 @@ class CurveGoldenTest {
         val tolG = g.tol("gDb")
         val tolP = g.tol("preampDb")
         val cases = g.arr("cases")
-        assertThat(cases.size).isAtLeast(19)
+        assertThat(cases.size).isEqualTo(19)
         for (c in cases) {
             val o = c.jsonObject
             val r = CurveBuilder.build(
@@ -53,14 +54,14 @@ class CurveGoldenTest {
         assertThat(hc.gainDb(16000.0)).isWithin(1e-9).of(8.0)    // hold
         assertThat(hc.gainDb(15000.0)).isWithin(1e-9).of(8.0)
         assertThat(hc.gainDb(20000.0)).isWithin(1e-9).of(0.0)    // faded out
-        val mid = hc.gainDb(16000.0 * Math.pow(2.0, 0.5 * (log2(20000.0 / 16000.0))))
+        val mid = hc.gainDb(16000.0 * 2.0.pow(0.5 * log2(20000.0 / 16000.0)))
         assertThat(mid).isWithin(1e-9).of(4.0)                    // halfway in log2 f
     }
 
     @Test
     fun flatHearingNoPreferenceGivesZeroCurveAndPreamp() {
         val r = CurveBuilder.build(zeros, zeros, 0.5, 0.0, 0.0, 0.0)
-        assertThat(r.gLeft.all { Math.abs(it) < 1e-9 }).isTrue()
+        assertThat(r.gLeft.all { kotlin.math.abs(it) < 1e-9 }).isTrue()
         assertThat(r.preampDb).isWithin(1e-9).of(-0.5)
     }
 

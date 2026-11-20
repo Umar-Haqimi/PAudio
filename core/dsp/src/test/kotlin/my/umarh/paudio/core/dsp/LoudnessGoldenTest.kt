@@ -11,6 +11,7 @@ class LoudnessGoldenTest {
         val g = Golden.load("loudness_predictor")
         val tol = g.tol("deltaLDb")
         var ltasCases = 0
+        assertThat(g.arr("cases").size).isEqualTo(33)
         for (c in g.arr("cases")) {
             val o = c.jsonObject
             val predictor = o["ltas"]?.let {
@@ -20,7 +21,7 @@ class LoudnessGoldenTest {
             val got = predictor.deltaLDb(o.getValue("gLeft").doubles(), o.getValue("gRight").doubles())
             assertThat(got).isWithin(tol).of(o.getValue("expectedDb").dbl())
         }
-        assertThat(ltasCases).isAtLeast(1)
+        assertThat(ltasCases).isEqualTo(4 + 18)
     }
 
     @Test

@@ -36,6 +36,7 @@ class FilterGoldenTest {
     fun preferenceCurveMatchesSumOfFilters() {
         val g = Golden.load("rbj_magnitudes")
         val tol = g.tol("magDb")
+        assertThat(g.arr("preferenceCases").size).isEqualTo(7)
         for (c in g.arr("preferenceCases")) {
             val o = c.jsonObject
             val curve = PreferenceCurve(o.getValue("gB").dbl(), o.getValue("gP").dbl(), o.getValue("gT").dbl())
@@ -47,6 +48,8 @@ class FilterGoldenTest {
     fun kWeightingMatchesScipyFreqz() {
         val g = Golden.load("k_weighting")
         val tol = g.tol("kDb")
+        assertThat(g.arr("cases").size).isEqualTo(30)
+        assertThat(g.getValue("gridHz").doubles().size).isEqualTo(240)
         for (c in g.arr("cases")) {
             val o = c.jsonObject
             val f = o.getValue("fcHz").dbl()
@@ -72,6 +75,7 @@ class FilterGoldenTest {
         val g = Golden.load("pchip")
         val tol = g.tol("valueDb")
         val knotTol = g.tol("knotExact")
+        assertThat(g.arr("cases").size).isEqualTo(10)
         for (c in g.arr("cases")) {
             val o = c.jsonObject
             val knots = o.getValue("knotsHz").doubles()

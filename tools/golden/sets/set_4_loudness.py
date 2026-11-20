@@ -15,6 +15,7 @@ without it the weighting is pink (equal power per band). Per-clip LTAS cases are
 from __future__ import annotations
 
 import importlib.util
+import json
 import platform
 from pathlib import Path
 
@@ -85,6 +86,17 @@ def generate(core_root: Path) -> None:
     specs.append(("bass_plus6_ltas", g_b6, g_b6, ltas))
     specs.append(("treble_minus6_ltas", _rbj.pref_db(0, 0, -6, GRID), _rbj.pref_db(0, 0, -6, GRID), ltas))
     specs.append(("asymmetric_mixed_ltas", g_b6 + flat(2), g_t6 - flat(3), ltas))
+
+    # Real clip LTAS (M4): each preference axis at +-6 per clip, read from the shipped assets.
+    assets = core_root.parent / "audio/playback/src/main/assets/demo"
+    for clip in ("discipline", "echoplex", "ghosts34"):
+        lt = json.loads((assets / f"{clip}.ltas.json").read_text())
+        assert np.allclose(lt["bandCentersHz"], CENTERS, rtol=1e-3), clip
+        for axis, args in [("bass", lambda v: (v, 0, 0)), ("presence", lambda v: (0, v, 0)),
+                           ("treble", lambda v: (0, 0, v))]:
+            for v in (6, -6):
+                g = _rbj.pref_db(*args(v), GRID)
+                specs.append((f"{axis}_{v:+d}_{clip}", g, g, lt))
 
     cases = []
     for name, gl, gr, lt in specs:

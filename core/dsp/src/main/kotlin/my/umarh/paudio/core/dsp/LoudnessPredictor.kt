@@ -24,7 +24,7 @@ class Ltas(val clip: String, val sampleRate: Int, val bandPower: DoubleArray) {
     companion object {
         fun parse(json: String): Ltas = fromJson(Json.parseToJsonElement(json).jsonObject)
 
-        fun fromJson(o: JsonObject): Ltas {
+        internal fun fromJson(o: JsonObject): Ltas {
             val centers = o.getValue("bandCentersHz").jsonArray.map { it.jsonPrimitive.double }
             val power = o.getValue("bandPower").jsonArray.map { it.jsonPrimitive.double }
             require(centers.size == ThirdOctaveBands.COUNT && power.size == ThirdOctaveBands.COUNT) {

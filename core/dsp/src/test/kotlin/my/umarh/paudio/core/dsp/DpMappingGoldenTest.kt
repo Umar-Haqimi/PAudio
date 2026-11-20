@@ -19,6 +19,9 @@ class DpMappingGoldenTest {
 
     @Test
     fun blockSizeAndLayoutsMatchOracleExactly() {
+        assertThat(g.arr("layouts").size).isEqualTo(6)
+        assertThat(g.arr("curves").size).isEqualTo(22)
+        assertThat(g.arr("results").size).isEqualTo(22 * 3 * 2)
         for (l in g.arr("layouts")) {
             val o = l.jsonObject
             val fs = o.getValue("fs").dbl().toInt()
@@ -64,7 +67,7 @@ class DpMappingGoldenTest {
                 checked++
             }
         }
-        assertThat(checked).isAtLeast(2 * 3 * 22 * 2)
+        assertThat(checked).isEqualTo(2 * 3 * 22 * 2)
         println("worst 87-band DP reconstruction RMS = $worstMain dB")
     }
 
