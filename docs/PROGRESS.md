@@ -93,3 +93,11 @@
 - Additive `core:model` changes: `EffectCreationException`/`EffectFailureKind`, `EffectHandle.clamped` (default never). `:testing`: `FakeEffectBackend.failCreates`, `FakeEffectHandle.setClamped`, `@RequiresHardware`.
 - Tests: engine (fakes, P0 bypass incl. sessions/config/device changes during bypass, nested tokens, process-death restore, conflict, ladder, idle, hint), backend via a fake `DpPort` (Robolectric), session source receiver (Robolectric); androidTest `DynamicsProcessingHardwareTest` (`@RequiresHardware`, not run in CI).
 - Needs a device: real DP creation/readback, priority arbitration against another EQ app, enable-toggle clicks. The `:service` consumes `EffectEngine` (`setRunning/setMode/setOutputDevice/setTarget/setPersonalized/retry`, `state`, `diagnostics`, `noSessionHint`).
+## M6 — audio:tone + audio:device
+
+- `:audio:tone`: `StreamScheduler` (pure silence/stimulus/25 ms raised-cosine ramp-down), `StreamEngine` (writer thread over a `PcmSink`), `AudioTrackToneOutput` (one continuous float AudioTrack, 16-bit TPDF fallback), `AndroidVolumeController` + `VolumeLock`, `AudioFocusMonitor`, Hilt `ToneModule`.
+- `:audio:device`: `DeviceMapping`, `AndroidOutputDevices`, `AndroidEnvironmentChecks` + `EnvironmentVerdict`, `AndroidNoiseMeter` + `NoiseLevel`, Hilt `DeviceModule`.
+- `:core:model`: added `InterruptibleToneOutput` (extension of `ToneOutput`); `:testing`: `RequiresHardware`, `FakeToneOutput` implements the extension.
+- Hardware tests (`@RequiresHardware`) in `audio/tone/src/androidTest`; exclude in CI via `-Pandroid.testInstrumentationRunnerArguments.notAnnotation=my.umarh.paudio.testing.RequiresHardware`.
+- M6 review fixes: engine failure recovery (dead-object sink re-creation once, failed engine rebuilt by `open()`), single stable `playing` flow, orphan-waiter/close races, echo suppression (`expectSelf`), `VolumeLock` initial drift + no raising after external lowering, exact-zero silence in 16-bit path, head-reset detection, muted-mic noise chunks skipped.
+- Device verification gap: Samsung `mono_audio` setting key is not covered by `AndroidEnvironmentChecks` (only `master_mono`).

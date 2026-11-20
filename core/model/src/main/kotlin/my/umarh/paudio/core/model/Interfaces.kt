@@ -13,6 +13,21 @@ interface ToneOutput {
     fun close()
 }
 
+/**
+ * Extension of [ToneOutput] (SPEC §5.2 stays intact) for tests where the listener answers *during* a stimulus.
+ */
+interface InterruptibleToneOutput : ToneOutput {
+    /** True only while a stimulus is audible at the transducer (playout position inside the stimulus). */
+    val playing: StateFlow<Boolean>
+
+    /**
+     * Stops the stimulus currently playing with a short (25 ms) raised-cosine ramp-down and returns once the
+     * ramp has been played out. The stream continues with digital silence. No-op if nothing is playing.
+     * The pending [play] call returns normally.
+     */
+    suspend fun stopCurrent()
+}
+
 interface VolumeController {
     val maxIndex: Int
     fun index(): Int
