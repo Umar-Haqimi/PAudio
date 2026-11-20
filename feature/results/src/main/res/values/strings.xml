@@ -1,5 +1,87 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="feature_results_title">Results</string>
+    <string name="feature_results_title">Your results</string>
     <string name="results_back">Back</string>
+
+    <string name="results_loading">Loading your results</string>
+    <string name="results_unavailable_title">Can\'t show these results</string>
+    <string name="results_unavailable_test_missing">This test is no longer available.</string>
+    <string name="results_unavailable_profile_missing">This profile is no longer available.</string>
+    <string name="results_unavailable_incomplete">This test\'s data is incomplete, so it can\'t be shown.</string>
+    <string name="results_unavailable_error">Something went wrong while loading your results.</string>
+
+    <string name="results_ear_right">Right ear</string>
+    <string name="results_ear_left">Left ear</string>
+
+    <!-- Butterfly -->
+    <string name="results_butterfly_title">Your hearing butterfly</string>
+    <string name="results_butterfly_hint">Each wing is one ear. Low pitches are at the bottom and high pitches at the top. A wider wing means you heard quieter sounds at that pitch.</string>
+    <string name="results_butterfly_description">Hearing butterfly, estimated. Right ear: %1$s Left ear: %2$s</string>
+    <string name="results_wing_left_label">Left ear</string>
+    <string name="results_wing_right_label">Right ear</string>
+
+    <!-- Plain-words summary (estimates only; never a statement that hearing is healthy or unhealthy) -->
+    <string name="results_summary_title">What we estimated</string>
+    <string name="results_pta_label">Speech-range average (1, 2 and 4 kHz)</string>
+    <string name="results_pta_value">About %1$s dB (estimated)</string>
+    <string name="results_wording_similar">Estimated close to your reference level, which is your better ear at 1 and 2 kHz.</string>
+    <string name="results_wording_slightly_higher">Estimated a little above your reference level.</string>
+    <string name="results_wording_higher">Estimated clearly above your reference level.</string>
+    <string name="results_wording_much_higher">Estimated well above your reference level.</string>
+    <string name="results_summary_caveat">These are rough estimates from phone and earphone playback, for music listening only. They are not a statement about whether your hearing is healthy.</string>
+
+    <!-- Notes -->
+    <string name="results_notes_title">Good to know</string>
+    <string name="results_unreliable_chip">Less reliable</string>
+    <string name="results_unreliable_body">You pressed the button during some silent moments, so this test may be less reliable. Consider repeating it in a quiet place.</string>
+    <string name="results_redo">Test again</string>
+    <plurals name="results_low_confidence">
+        <item quantity="one">%1$d point was inconsistent between repeats. Treat it as especially rough.</item>
+        <item quantity="other">%1$d points were inconsistent between repeats. Treat them as especially rough.</item>
+    </plurals>
+    <string name="results_asymmetry_chip">Ears differ</string>
+    <string name="results_asymmetry_body">Your ears may differ by 15 dB or more across neighboring pitches. This can have many ordinary causes, such as earwax or headphone fit. If it persists, consider seeing an audiologist.</string>
+    <string name="results_beyond_range_chip">Beyond test range</string>
+    <string name="results_beyond_range_left">Some high pitches in your left ear were beyond the test range: you did not hear them at the loudest level PAudio allows, so the real value may be higher. That does not mean there is no hearing at those pitches.</string>
+    <string name="results_beyond_range_right">Some high pitches in your right ear were beyond the test range: you did not hear them at the loudest level PAudio allows, so the real value may be higher. That does not mean there is no hearing at those pitches.</string>
+    <string name="results_beyond_range_both">Some high pitches in both ears were beyond the test range: you did not hear them at the loudest level PAudio allows, so the real value may be higher. That does not mean there is no hearing at those pitches.</string>
+
+    <!-- A/B -->
+    <string name="results_ab_title">Hear the difference</string>
+    <string name="results_ab_intro">Switch between your original sound and your personalized sound while the music keeps playing. Loudness is matched, so a louder sound does not win.</string>
+    <string name="results_ab_original">Original</string>
+    <string name="results_ab_personalized">Personalized</string>
+    <string name="results_ab_now_original">Listening to: Original</string>
+    <string name="results_ab_now_personalized">Listening to: Personalized</string>
+    <string name="results_ab_play">Play</string>
+    <string name="results_ab_pause">Pause</string>
+    <string name="results_ab_preparing">Getting the audio ready</string>
+    <string name="results_ab_error">The audio could not be prepared. Check that nothing else is using the headphones, then try again.</string>
+    <string name="results_ab_retry">Try again</string>
+    <string name="results_ab_source_clip">Demo clip: %1$s</string>
+    <string name="results_ab_source_file">Your song: %1$s</string>
+    <string name="results_ab_source_file_unnamed">Your own song</string>
+    <string name="results_ab_use_own">Use my own song</string>
+    <string name="results_ab_use_demo">Use the demo clip</string>
+    <string name="results_ab_file_error">That file could not be opened, so the demo clip is playing instead.</string>
+    <string name="results_ab_attribution">%1$s by Nine Inch Nails, licensed CC BY-NC-SA 3.0 US.</string>
+    <string name="results_clip_discipline">Discipline</string>
+    <string name="results_clip_echoplex">Echoplex</string>
+    <string name="results_clip_ghosts34">34 Ghosts IV</string>
+
+    <!-- EQ graph -->
+    <string name="results_eq_title">Your EQ curve</string>
+    <string name="results_eq_body_personalized">This is how Personalized changes the sound for each ear.</string>
+    <string name="results_eq_body_original">Original is flat: nothing is changed.</string>
+
+    <!-- Actions -->
+    <string name="results_see_health">See hearing health</string>
+    <string name="results_done">Done</string>
+    <string name="results_disclaimer_short">PAudio is not a medical device. These results are estimates for music listening only. Hearing health has the full details.</string>
+
+    <!-- Exit dialog (F12) -->
+    <string name="results_exit_title">Fine-tune to your taste next?</string>
+    <string name="results_exit_body">A/B preference test, about 2 minutes. You can also do it later.</string>
+    <string name="results_exit_confirm">Fine-tune now</string>
+    <string name="results_exit_dismiss">Not now</string>
 </resources>

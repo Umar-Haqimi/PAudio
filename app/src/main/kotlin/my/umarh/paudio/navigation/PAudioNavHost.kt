@@ -38,10 +38,18 @@ fun PAudioNavHost() {
             onSettings = { nav.navigate(SettingsRoute) },
         )
         hearingTestScreen(
-            onShowResults = { nav.navigate(ResultsRoute) { popUpTo(HearingTestRoute) { inclusive = true } } },
+            // TODO(M9a): navigate with the saved test's id once the hearing-test flow records it (0L is a placeholder).
+            onShowResults = { nav.navigate(ResultsRoute(testId = 0L)) { popUpTo(HearingTestRoute) { inclusive = true } } },
             onBack = { nav.popBackStack() },
         )
-        resultsScreen(onBack = { nav.popBackStack() })
+        resultsScreen(
+            onSeeHealth = { profileId, testId -> nav.navigate(HealthRoute(profileId = profileId, testId = testId)) },
+            // TODO(M11): PreferenceRoute will take the profileId passed here.
+            onPreferenceTest = { nav.navigate(PreferenceRoute) },
+            onDone = { nav.popBackStack() },
+            // Leaves Results (no exit dialog) and starts a fresh test; the new Results replaces this one.
+            onRedoTest = { nav.navigate(HearingTestRoute) { popUpTo<ResultsRoute> { inclusive = true } } },
+        )
         healthScreen(onBack = { nav.popBackStack() })
         preferenceScreen(onBack = { nav.popBackStack() })
         profilesScreen(onBack = { nav.popBackStack() })
