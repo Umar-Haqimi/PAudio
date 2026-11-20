@@ -1,0 +1,581 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "30458540bcd308565be7a101cacf938c",
+    "entities": [
+      {
+        "tableName": "listener",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "headset",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `key` TEXT NOT NULL, `displayName` TEXT NOT NULL, `type` TEXT NOT NULL, `productName` TEXT NOT NULL, `addressSuffix` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "displayName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "productName",
+            "columnName": "productName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "addressSuffix",
+            "columnName": "addressSuffix",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_headset_key",
+            "unique": true,
+            "columnNames": [
+              "key"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_headset_key` ON `${TABLE_NAME}` (`key`)"
+          }
+        ]
+      },
+      {
+        "tableName": "profile",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `listenerId` INTEGER NOT NULL, `headsetId` INTEGER, `name` TEXT NOT NULL, `compStrength` REAL NOT NULL, `gB` REAL NOT NULL, `gP` REAL NOT NULL, `gT` REAL NOT NULL, `personalizationOn` INTEGER NOT NULL, `seedColor` INTEGER, `seedOverridden` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, FOREIGN KEY(`listenerId`) REFERENCES `listener`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`headsetId`) REFERENCES `headset`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "listenerId",
+            "columnName": "listenerId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "headsetId",
+            "columnName": "headsetId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "compStrength",
+            "columnName": "compStrength",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "gB",
+            "columnName": "gB",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "gP",
+            "columnName": "gP",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "gT",
+            "columnName": "gT",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "personalizationOn",
+            "columnName": "personalizationOn",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "seedColor",
+            "columnName": "seedColor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "seedOverridden",
+            "columnName": "seedOverridden",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_profile_listenerId_headsetId",
+            "unique": true,
+            "columnNames": [
+              "listenerId",
+              "headsetId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_profile_listenerId_headsetId` ON `${TABLE_NAME}` (`listenerId`, `headsetId`)"
+          },
+          {
+            "name": "index_profile_headsetId",
+            "unique": false,
+            "columnNames": [
+              "headsetId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_profile_headsetId` ON `${TABLE_NAME}` (`headsetId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "listener",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "listenerId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "headset",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "headsetId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "hearing_test",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `profileId` INTEGER NOT NULL, `mode` TEXT NOT NULL, `startedAt` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, `volIndex` INTEGER NOT NULL, `volMax` INTEGER NOT NULL, `lRef` REAL NOT NULL, `deviceSnapshotJson` TEXT, `ancOn` INTEGER, `appVersion` TEXT NOT NULL, `algoVersion` INTEGER NOT NULL, `fpRate` REAL, `reliable` INTEGER NOT NULL, FOREIGN KEY(`profileId`) REFERENCES `profile`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "profileId",
+            "columnName": "profileId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mode",
+            "columnName": "mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "startedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationMs",
+            "columnName": "durationMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "volIndex",
+            "columnName": "volIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "volMax",
+            "columnName": "volMax",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lRef",
+            "columnName": "lRef",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceSnapshotJson",
+            "columnName": "deviceSnapshotJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "ancOn",
+            "columnName": "ancOn",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "appVersion",
+            "columnName": "appVersion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "algoVersion",
+            "columnName": "algoVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fpRate",
+            "columnName": "fpRate",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "reliable",
+            "columnName": "reliable",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_hearing_test_profileId",
+            "unique": false,
+            "columnNames": [
+              "profileId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_hearing_test_profileId` ON `${TABLE_NAME}` (`profileId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "profile",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "profileId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "threshold",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`testId` INTEGER NOT NULL, `ear` TEXT NOT NULL, `freqHz` INTEGER NOT NULL, `levelDbfs` REAL, `censored` INTEGER NOT NULL, `lowConfidence` INTEGER NOT NULL, `trials` INTEGER NOT NULL, PRIMARY KEY(`testId`, `ear`, `freqHz`), FOREIGN KEY(`testId`) REFERENCES `hearing_test`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "testId",
+            "columnName": "testId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ear",
+            "columnName": "ear",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "freqHz",
+            "columnName": "freqHz",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "levelDbfs",
+            "columnName": "levelDbfs",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "censored",
+            "columnName": "censored",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lowConfidence",
+            "columnName": "lowConfidence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "trials",
+            "columnName": "trials",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "testId",
+            "ear",
+            "freqHz"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "hearing_test",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "testId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "trial",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`testId` INTEGER NOT NULL, `seq` INTEGER NOT NULL, `ear` TEXT NOT NULL, `freqHz` INTEGER NOT NULL, `levelDbfs` REAL, `isCatch` INTEGER NOT NULL, `response` INTEGER NOT NULL, `tMs` INTEGER NOT NULL, `run` TEXT, PRIMARY KEY(`testId`, `seq`), FOREIGN KEY(`testId`) REFERENCES `hearing_test`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "testId",
+            "columnName": "testId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "seq",
+            "columnName": "seq",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ear",
+            "columnName": "ear",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "freqHz",
+            "columnName": "freqHz",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "levelDbfs",
+            "columnName": "levelDbfs",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "isCatch",
+            "columnName": "isCatch",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "response",
+            "columnName": "response",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tMs",
+            "columnName": "tMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "run",
+            "columnName": "run",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "testId",
+            "seq"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "hearing_test",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "testId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "preference_test",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `profileId` INTEGER NOT NULL, `startedAt` INTEGER NOT NULL, `gB` REAL NOT NULL, `gP` REAL NOT NULL, `gT` REAL NOT NULL, `roundsJson` TEXT, FOREIGN KEY(`profileId`) REFERENCES `profile`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "profileId",
+            "columnName": "profileId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "startedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "gB",
+            "columnName": "gB",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "gP",
+            "columnName": "gP",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "gT",
+            "columnName": "gT",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "roundsJson",
+            "columnName": "roundsJson",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_preference_test_profileId",
+            "unique": false,
+            "columnNames": [
+              "profileId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_preference_test_profileId` ON `${TABLE_NAME}` (`profileId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "profile",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "profileId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '30458540bcd308565be7a101cacf938c')"
+    ]
+  }
+}

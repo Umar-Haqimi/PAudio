@@ -79,3 +79,11 @@
 - **Configuration cache, parallel and build cache are on** and working.
 - **Navigation**: Navigation Compose 2.10 type-safe routes (`@Serializable data object XxxRoute`); the feature convention applies the serialization plugin.
 - **Android launcher icon**: placeholder vector headphones (adaptive + monochrome).
+
+### M5 — Data layer (complete)
+- `:data` (`my.umarh.paudio.data`): Room v1 (`db/`, schema exported to `data/schemas`), repositories (`repo/`), DataStore `SettingsRepository`, `transfer/` (pure `ProfileImportValidator`, `ProfileExporter`, `ProfileImporter`), Hilt in `di/`.
+- Any-headphones uniqueness: SQLite UNIQUE ignores NULLs, so `RoomProfileRepository` checks the slot (`headsetId IS :x`) inside a Room transaction for create/duplicate/move/ensureAny; import does the same.
+- `duplicate` needs a free target slot (`ProfileSlot`), else `Conflict`. Import conflict: `ImportResult.Conflict` (no writes) resolved via `ConflictPolicy` REPLACE / IMPORT_AS_ANY / REPLACE_ANY.
+- Import rejects (never truncates) >2 MB, >100 tests, >20,000 trials, nesting >32, NaN/Inf; clamps numeric ranges; recomputes `HeadsetKey`.
+- Trend filtering by `headsetKey` inside `deviceSnapshotJson` (`DeviceSnapshot.withHeadsetKey`).
+- `androidTest/MigrationTest` is ready for version 2 (not run in CI).
