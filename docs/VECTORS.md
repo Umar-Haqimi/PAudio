@@ -97,28 +97,130 @@ The generator must additionally run a **self-check** (not exported): a bit-exact
 Also include negative controls (expected in the JSON as `"specLayout40"` with its worse `reconRmsDb`) for the spec's 40-band `c_k` layout so a reader can see why it was rejected; Kotlin does **not** assert ≤ 0.5 on those.
 
 ### Set 7 — Stimulus synthesis (SPEC §2.1.2, §2.2 #4, §4)
-Parameters per case: `fs ∈ {48000, 44100}`; tone `{1 kHz pure, 8 kHz warble, 14 kHz warble}`; level −40 dBFS (peak amplitude `A = 10^(−40/20)`); ear `{L, R}`; pulse = 225 ms including **25 ms raised-cosine on/off ramps** `r(t) = 0.5·(1 − cos(π·t/25 ms))` (and mirrored at the end); warble = ±5 % sinusoidal FM at 8 Hz: `f_inst(n) = f·(1 + 0.05·sin(2π·8·n/fs))`, phase accumulated as `φ[n] = φ[n−1] + 2π·f_inst(n)/fs` starting at `φ[−1] = 0`; pure tones `φ[n] = 2π·f·n/fs`; sample `x[n] = A·r[n]·sin(φ[n])`. The opposite channel is exactly `0.0`. (Proposal to freeze in M3; the M3 engineer may refine details but must update this paragraph and the generator in the same commit.)
-Expected: first 2048 samples (float, both channels), `peak`, `rms`, steady-state peak (±0.05 dB of target), spectral energy inside ±12 % of `f` vs outside in dB (Hann-windowed FFT of the full pulse; gate ≤ −50 dB relative, SPEC §7.2), ramp endpoint values.
+Frozen in M3 (`tools/golden/sets/set_7_stimulus.py`, six cases: 1 kHz pure, 8 kHz and 14 kHz warble × fs ∈ {48000, 44100}, alternating ears, level −40 dBFS, amplitude `A = 10^(−40/20)`). A pulse has `N = (225·fs + 500)//1000` samples; sample n is at pulse-local time `t = n/fs` (every pulse restarts at phase 0). Envelope: raised cosine `r(t) = 0.5·(1 − cos(π·t/25 ms))` for `t < 25 ms` on the way in, mirrored on the way out with `t' = (N−1−n)/fs` (so the first and last samples are exactly 0). Pure tones (f < 4 kHz): `φ = 2π·f·t`. Warble (f ≥ 4 kHz): `f_inst = f·(1 + 0.05·sin(2π·8·t))` with the **closed-form** phase (analytic integral, φ(0) = 0) `φ = 2π·f·t + (0.05·f/8)·(1 − cos(2π·8·t))`. `x[n] = A·r_on·r_off·sin(φ)`; the opposite channel is exactly `0.0`. The 3-pulse stimulus repeats the pulse with 200 ms gaps (its first 2048 samples equal the single pulse's).
+Expected per case (single pulse): the first 2048 samples of the active channel (`samples`), `frames`, `peakDb`, `rmsDb`, `steadyPeakDb` (max |x| for t ≥ 25 ms and t' ≥ 25 ms), `outOfBandRelDb = 10·log10(E_out/E_in)` from a **rectangular-window** rFFT zero-padded to 65536 points (the pulse is already tapered by its own ramps; a Hann window would hide ramp splatter), in-band = `|f_k − f| ≤ 12 % of f` (gate ≤ −50 dB, SPEC §7.2), plus `firstSample`/`lastSample`.
 Samples tolerance 1e-6; stats 0.01 dB.
 
 ### Set 8 — Hughson-Westlake scripted sequences
 Eight scripts with exact expected level sequences and thresholds. Rules (SPEC §4 "Quick detail", normative): start level `L_exp + 20` (or other ear + 15), clamp ≤ `L_max`; not heard → +10 until heard (or censor at `L_max`); then heard → −10, not heard → +5; threshold = lowest level with ≥2 "heard" in ≤3 ascending presentations at that level; max 15 trials per point; fallback = mean of last 4 reversal levels flagged low-confidence.
-File format per case: `{"name", "Lexp", "Lmax", "startOverride": null, "responses": "YNY…", "levels": [..per presentation..], "reversals": [..], "thresholdDb": x|null, "censored": bool, "lowConfidence": bool, "trials": n}`.
+File format per case: `{"name", "Lexp", "Lmax", "Lmin": x, "otherEarThresholdDb": x|null, "responses": "YNY…", "levels": [..per presentation..], "reversals": [..], "thresholdDb": x|null, "censored": bool, "lowConfidence": bool, "atFloor": bool, "trials": n}`.
 
 #### Hughson-Westlake scripted derivations
-> **PLACEHOLDER — to be filled by the M3 engineer.** For each of the 8 scripted response strings write the full derivation here (start level, each presentation's level, the response, the rule applied, running ascending-heard counts per level, reversal list, final threshold, flags) *before* encoding it in `gen_hw.py`; the JSON must be derived from this hand work, not from running the Kotlin engine. Suggested scripts: (1) clean 2-of-3 at first ascending level; (2) heard-heard immediately; (3) needs +10 search steps; (4) censored at `L_max`; (5) hits the 15-trial cap and falls back to mean-of-4-reversals (low-confidence); (6) late response to a catch trial excluded from threshold logic; (7) clamp at `L_max` during +5 step; (8) other-ear-seeded start (+15) with immediate not-heard.
->
-> Template for each script:
-> ```
-> Script N — <title>
-> Parameters: Lexp = ..., Lmax = ..., start = ...
-> Presentations: # | level | response | rule | note
-> Reversals: [...]
-> Ascending-heard counts at level L: {...}
-> Result: threshold = ... dB, censored = ..., lowConfidence = ..., trials = ...
-> ```
->
-> _(Derivations go here.)_
+Hand-derived in M3 *before* encoding them in `tools/golden/sets/set_8_hw.py` (which additionally replays each script through an independent Python restatement of the rules and asserts equality). All levels dBFS. Common parameters unless stated: `Lexp = −60`, `Lmax = min(−3, Lexp+50) = −10`, `Lmin = Lexp−25 = −85`, so the default start is `Lexp+20 = −40`. Extra JSON fields vs. the file format above: `Lmin`, `otherEarThresholdDb`, `atFloor`.
+
+**Precise rules used (the engine and the oracle implement exactly these):**
+- *Start* = `min(Lmax, other+15)` if the other ear's threshold at this f is known, else `min(Lmax, Lexp+20)`; then `max(Lmin, ·)`.
+- *SEEK phase* (until the first "heard"): not heard → +10 (capped at Lmax); not heard **at Lmax** → censored (level Lmax). The first "heard" ends SEEK.
+- *After* the first heard: heard → −10 (floored at Lmin), not heard → +5 (capped at Lmax).
+- A presentation is **ascending** iff the previous answer was "not heard" (its level was reached by an upward step). The first presentation is never ascending. Per level only the first 3 ascending presentations count. **Threshold = the first level that collects 2 "heard" among its ascending presentations.**
+- *Floor*: "heard" at Lmin counts; 2 heard at Lmin (even via clamped repeats) → threshold Lmin, `atFloor`. *Ceiling after SEEK*: 2 "not heard" at Lmax → censored.
+- *Max 15 presentations*; if undecided after the 15th answer → mean of the last 4 reversal levels (fewer → all; none → last 4 presented levels), `lowConfidence`.
+- **Reversal** = the level of a presentation whose answer differs from the immediately previous answer (turning point: valley after heard→not heard, peak after not heard→heard). The first answer is never a reversal.
+
+In every table `A?` = ascending presentation, `asc(L)` = "heard/presented" ascending counts at that level after this row.
+
+**Script 1 — normal convergence.** `Lexp=−60, Lmax=−10, Lmin=−85`, start −40, responses `YYYNNYNNY`.
+
+| # | level | resp | A? | rule → next | note |
+|---|---|---|---|---|---|
+| 1 | −40 | Y | no | heard → −10 → −50 | |
+| 2 | −50 | Y | no | → −60 | |
+| 3 | −60 | Y | no | → −70 | heard at −60 but descending: not counted |
+| 4 | −70 | N | no | not heard → +5 → −65 | reversal −70 (Y→N) |
+| 5 | −65 | N | yes | → −60 | asc(−65)=0/1 |
+| 6 | −60 | Y | yes | heard → −70 | asc(−60)=1/1; reversal −60 (N→Y) |
+| 7 | −70 | N | no | → −65 | reversal −70 |
+| 8 | −65 | N | yes | → −60 | asc(−65)=0/2 |
+| 9 | −60 | Y | yes | asc(−60)=2/2 → **threshold −60** | reversal −60 |
+
+Levels `[−40,−50,−60,−70,−65,−60,−70,−65,−60]`, reversals `[−70,−60,−70,−60]`, threshold −60, 9 trials, not censored/low-confidence.
+
+**Script 2 — censored at Lmax.** Same parameters, responses `NNNN`: −40 N → +10 → −30 N → −20 N → −10 N. The 4th presentation is at Lmax and not heard in SEEK → **censored**, level −10. Levels `[−40,−30,−20,−10]`, no reversals, 4 trials.
+
+**Script 3 — immediate yes at start, then 2 of 3 non-consecutive.** Start −40, responses `YNYNNY`.
+
+| # | level | resp | A? | next | note |
+|---|---|---|---|---|---|
+| 1 | −40 | Y | no | −50 | immediate yes (start is not ascending) |
+| 2 | −50 | N | no | +5 → −45 | reversal −50 |
+| 3 | −45 | Y | yes | −55 | asc(−45)=1/1; reversal −45 |
+| 4 | −55 | N | no | −50 | reversal −55 |
+| 5 | −50 | N | yes | −45 | asc(−50)=0/1 |
+| 6 | −45 | Y | yes | asc(−45)=2/2 → **threshold −45** | reversal −45 |
+
+Levels `[−40,−50,−45,−55,−50,−45]`, reversals `[−50,−45,−55,−45]`, 6 trials. (The first −45 heard was the 1st ascending presentation there, the second the 2nd; the intervening −55/−50 do not matter.)
+
+**Script 4 — max-15 fallback.** Start −40, responses `YYYNYNNNYNNNYNN`; no level ever collects 2 ascending hits.
+
+| # | level | resp | A? | next | asc counts / reversal |
+|---|---|---|---|---|---|
+| 1 | −40 | Y | no | −50 | |
+| 2 | −50 | Y | no | −60 | |
+| 3 | −60 | Y | no | −70 | |
+| 4 | −70 | N | no | −65 | rev −70 |
+| 5 | −65 | Y | yes | −75 | asc(−65)=1/1; rev −65 |
+| 6 | −75 | N | no | −70 | rev −75 |
+| 7 | −70 | N | yes | −65 | asc(−70)=0/1 |
+| 8 | −65 | N | yes | −60 | asc(−65)=1/2 |
+| 9 | −60 | Y | yes | −70 | asc(−60)=1/1; rev −60 |
+| 10 | −70 | N | no | −65 | rev −70 |
+| 11 | −65 | N | yes | −60 | asc(−65)=1/3 (3 presentations, 1 heard: cannot qualify) |
+| 12 | −60 | N | yes | −55 | asc(−60)=1/2 |
+| 13 | −55 | Y | yes | −65 | asc(−55)=1/1; rev −55 |
+| 14 | −65 | N | no | −60 | rev −65 (descending presentation, not counted) |
+| 15 | −60 | N | yes | — | asc(−60)=1/3; 15 trials reached, undecided |
+
+Reversals `[−70,−65,−75,−60,−70,−55,−65]` (7); last four `[−60,−70,−55,−65]` → mean **−62.5**, `lowConfidence = true`, 15 trials.
+
+**Script 5 — ascending 2-of-3 with a miss.** Start −40, responses `NYYYNYNNNYNY`.
+
+| # | level | resp | A? | next | notes |
+|---|---|---|---|---|---|
+| 1 | −40 | N | no | SEEK +10 → −30 | |
+| 2 | −30 | Y | yes | −40 | asc(−30)=1/1; rev −30; SEEK ends |
+| 3 | −40 | Y | no | −50 | |
+| 4 | −50 | Y | no | −60 | |
+| 5 | −60 | N | no | −55 | rev −60 |
+| 6 | −55 | Y | yes | −65 | asc(−55)=1/1; rev −55 |
+| 7 | −65 | N | no | −60 | rev −65 |
+| 8 | −60 | N | yes | −55 | asc(−60)=0/1 |
+| 9 | −55 | N | yes | −50 | asc(−55)=1/2 — the **miss** |
+| 10 | −50 | Y | yes | −60 | asc(−50)=1/1; rev −50 |
+| 11 | −60 | N | no | −55 | rev −60 |
+| 12 | −55 | Y | yes | asc(−55)=2/3 → **threshold −55** | rev −55 |
+
+Levels `[−40,−30,−40,−50,−60,−55,−65,−60,−55,−50,−60,−55]`, reversals `[−30,−60,−55,−65,−50,−60,−55]`, 12 trials.
+
+**Script 6 — start from the other ear's threshold.** Other ear = −52 ⇒ start `−52+15 = −37` (instead of −40), responses `YYNYNNY`.
+
+| # | level | resp | A? | next | notes |
+|---|---|---|---|---|---|
+| 1 | −37 | Y | no | −47 | |
+| 2 | −47 | Y | no | −57 | |
+| 3 | −57 | N | no | −52 | rev −57 |
+| 4 | −52 | Y | yes | −62 | asc(−52)=1/1; rev −52 |
+| 5 | −62 | N | no | −57 | rev −62 |
+| 6 | −57 | N | yes | −52 | asc(−57)=0/1 |
+| 7 | −52 | Y | yes | asc(−52)=2/2 → **threshold −52** | rev −52 |
+
+Levels `[−37,−47,−57,−52,−62,−57,−52]`, reversals `[−57,−52,−62,−52]`, 7 trials.
+
+**Script 7 — clamp at Lmin.** Start −40, responses `YYYYYYY` (hears everything): −40, −50, −60, −70, −80 are all heard (−10 each); −80 − 10 = −90 is below Lmin, so the next level is **clamped to −85** (6th presentation, heard: floor hit 1, next level again −85 because max(−85, −95) = −85); 7th presentation at −85 heard: floor hit 2 → **threshold −85, atFloor**. Nothing is ever presented below −85. Levels `[−40,−50,−60,−70,−80,−85,−85]`, no reversals, 7 trials, not low-confidence.
+
+**Script 8 — mixed: start clamped to Lmax + other ear + 2-of-2.** Other ear = −20 ⇒ `−20+15 = −5 > Lmax`, so start = **−10** (clamped). Responses `YYNNYNNY`.
+
+| # | level | resp | A? | next | notes |
+|---|---|---|---|---|---|
+| 1 | −10 | Y | no | −20 | start clamped to Lmax |
+| 2 | −20 | Y | no | −30 | |
+| 3 | −30 | N | no | −25 | rev −30 |
+| 4 | −25 | N | yes | −20 | asc(−25)=0/1 |
+| 5 | −20 | Y | yes | −30 | asc(−20)=1/1; rev −20 |
+| 6 | −30 | N | no | −25 | rev −30 |
+| 7 | −25 | N | yes | −20 | asc(−25)=0/2 |
+| 8 | −20 | Y | yes | asc(−20)=2/2 → **threshold −20** | rev −20 |
+
+Levels `[−10,−20,−30,−25,−20,−30,−25,−20]`, reversals `[−30,−20,−30,−20]`, 8 trials.
 
 ### Set 9 — Preference bisection
 Scripted choice sequences (SPEC §4 flow 5): rounds interleave axes B, P, T, B, P, T, B, P, T; per axis centre `c = 0`; each round compares `c − s` vs `c + s` (A/B side randomisation is irrelevant to the result: record the picked **value**, not the side); picking sets `c` to the picked value and halves `s`; "Can't tell" ends that axis. Initial steps/clamps: bass `s₀ = 6`, `c ∈ [−6, +12]`; presence `s₀ = 4`, `c ∈ [−6, +6]`; treble `s₀ = 5`, `c ∈ [−8, +8]`. Cases: always-low, always-high, alternating, can't-tell at round 2 for one axis, can't-tell immediately for all axes, clamp hit on bass upper bound, mixed. Expected: per-round `(axis, a, b, picked)` and final `(gB, gP, gT)` (exact). Hand-derived; document each in this file when M4 is done.

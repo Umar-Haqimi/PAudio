@@ -1,0 +1,2260 @@
+{
+ "set": "measurement_model",
+ "formatVersion": 1,
+ "generator": "tools/golden/sets/set_5a_measurement.py",
+ "numpy": "2.5.3",
+ "tolerance": {
+  "dB": 0.01
+ },
+ "cases": [
+  {
+   "name": "normal",
+   "lRef": -60.0,
+   "freqsHz": [
+    1000,
+    2000,
+    3000,
+    4000,
+    6000,
+    8000,
+    10000,
+    12500,
+    14000
+   ],
+   "thresholds": {
+    "LEFT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -60.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -62.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -64.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -64.6,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -59.4,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -54.0,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -51.0,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -46.4,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -37.6,
+      "censored": false
+     }
+    ],
+    "RIGHT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -60.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -62.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -64.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -64.6,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -59.4,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -54.0,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -51.0,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -46.4,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -37.6,
+      "censored": false
+     }
+    ]
+   },
+   "expected": {
+    "N": {
+     "LEFT": [
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8
+     ],
+     "RIGHT": [
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8
+     ]
+    },
+    "A": -60.8,
+    "HL": {
+     "LEFT": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "RIGHT": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "pta3": {
+     "LEFT": 0.0,
+     "RIGHT": 0.0
+    },
+    "betterEarPta3": 0.0,
+    "grade": "NORMAL",
+    "ehf": {
+     "LEFT": 0.0,
+     "RIGHT": 0.0
+    },
+    "asymmetry": false
+   }
+  },
+  {
+   "name": "normal_jitter",
+   "lRef": -58.0,
+   "freqsHz": [
+    1000,
+    2000,
+    3000,
+    4000,
+    6000,
+    8000,
+    10000,
+    12500,
+    14000
+   ],
+   "thresholds": {
+    "LEFT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -59.5,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -60.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -62.4,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -64.5,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -58.8,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -50.3,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -50.7,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -45.9,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -33.8,
+      "censored": false
+     }
+    ],
+    "RIGHT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -57.5,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -60.8,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -62.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -61.9,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -58.3,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -53.4,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -47.8,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -43.7,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -35.6,
+      "censored": false
+     }
+    ]
+   },
+   "expected": {
+    "N": {
+     "LEFT": [
+      -60.3,
+      -58.8,
+      -58.4,
+      -60.7,
+      -60.199999999999996,
+      -57.099999999999994,
+      -60.5,
+      -60.3,
+      -57.0
+     ],
+     "RIGHT": [
+      -58.3,
+      -59.3,
+      -58.8,
+      -58.1,
+      -59.699999999999996,
+      -60.199999999999996,
+      -57.599999999999994,
+      -58.1,
+      -58.8
+     ]
+    },
+    "A": -59.55,
+    "HL": {
+     "LEFT": [
+      -0.75,
+      0.75,
+      1.1499999999999986,
+      -1.1500000000000057,
+      -0.6499999999999986,
+      2.450000000000003,
+      -0.9500000000000028,
+      -0.75,
+      2.549999999999997
+     ],
+     "RIGHT": [
+      1.25,
+      0.25,
+      0.75,
+      1.4499999999999957,
+      -0.14999999999999858,
+      -0.6499999999999986,
+      1.9500000000000028,
+      1.4499999999999957,
+      0.75
+     ]
+    },
+    "pta3": {
+     "LEFT": -0.38333333333333525,
+     "RIGHT": 0.983333333333332
+    },
+    "betterEarPta3": -0.38333333333333525,
+    "grade": "NORMAL",
+    "ehf": {
+     "LEFT": 0.28333333333333144,
+     "RIGHT": 1.3833333333333329
+    },
+    "asymmetry": false
+   }
+  },
+  {
+   "name": "sloping_hf_mild",
+   "lRef": -60.0,
+   "freqsHz": [
+    1000,
+    2000,
+    3000,
+    4000,
+    6000,
+    8000,
+    10000,
+    12500,
+    14000
+   ],
+   "thresholds": {
+    "LEFT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -60.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -62.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -59.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -54.6,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -44.4,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -34.0,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -26.0,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -16.4,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -3.0,
+      "censored": true
+     }
+    ],
+    "RIGHT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -60.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -62.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -59.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -54.6,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -44.4,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -34.0,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -26.0,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -16.4,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -3.0,
+      "censored": true
+     }
+    ]
+   },
+   "expected": {
+    "N": {
+     "LEFT": [
+      -60.8,
+      -60.8,
+      -55.8,
+      -50.800000000000004,
+      -45.8,
+      -40.8,
+      -35.8,
+      -30.799999999999997,
+      -26.2
+     ],
+     "RIGHT": [
+      -60.8,
+      -60.8,
+      -55.8,
+      -50.800000000000004,
+      -45.8,
+      -40.8,
+      -35.8,
+      -30.799999999999997,
+      -26.2
+     ]
+    },
+    "A": -60.8,
+    "HL": {
+     "LEFT": [
+      0.0,
+      0.0,
+      5.0,
+      9.999999999999993,
+      15.0,
+      20.0,
+      25.0,
+      30.0,
+      34.599999999999994
+     ],
+     "RIGHT": [
+      0.0,
+      0.0,
+      5.0,
+      9.999999999999993,
+      15.0,
+      20.0,
+      25.0,
+      30.0,
+      34.599999999999994
+     ]
+    },
+    "pta3": {
+     "LEFT": 3.333333333333331,
+     "RIGHT": 3.333333333333331
+    },
+    "betterEarPta3": 3.333333333333331,
+    "grade": "NORMAL",
+    "ehf": {
+     "LEFT": 29.866666666666664,
+     "RIGHT": 29.866666666666664
+    },
+    "asymmetry": false
+   }
+  },
+  {
+   "name": "sloping_hf_severe_censored",
+   "lRef": -60.0,
+   "freqsHz": [
+    1000,
+    2000,
+    3000,
+    4000,
+    6000,
+    8000,
+    10000,
+    12500,
+    14000
+   ],
+   "thresholds": {
+    "LEFT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -55.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -52.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -44.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -29.6,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -14.4,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -4.0,
+      "censored": true
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -3.0,
+      "censored": true
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -3.0,
+      "censored": true
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -3.0,
+      "censored": true
+     }
+    ],
+    "RIGHT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -55.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -52.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -44.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -29.6,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -14.4,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -4.0,
+      "censored": true
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -3.0,
+      "censored": true
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -3.0,
+      "censored": true
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -3.0,
+      "censored": true
+     }
+    ]
+   },
+   "expected": {
+    "N": {
+     "LEFT": [
+      -55.8,
+      -50.8,
+      -40.8,
+      -25.8,
+      -15.8,
+      -10.8,
+      -12.8,
+      -17.4,
+      -26.2
+     ],
+     "RIGHT": [
+      -55.8,
+      -50.8,
+      -40.8,
+      -25.8,
+      -15.8,
+      -10.8,
+      -12.8,
+      -17.4,
+      -26.2
+     ]
+    },
+    "A": -53.3,
+    "HL": {
+     "LEFT": [
+      -2.5,
+      2.5,
+      12.5,
+      27.499999999999996,
+      37.5,
+      42.5,
+      40.5,
+      35.9,
+      27.099999999999998
+     ],
+     "RIGHT": [
+      -2.5,
+      2.5,
+      12.5,
+      27.499999999999996,
+      37.5,
+      42.5,
+      40.5,
+      35.9,
+      27.099999999999998
+     ]
+    },
+    "pta3": {
+     "LEFT": 9.166666666666666,
+     "RIGHT": 9.166666666666666
+    },
+    "betterEarPta3": 9.166666666666666,
+    "grade": "NORMAL",
+    "ehf": {
+     "LEFT": 34.5,
+     "RIGHT": 34.5
+    },
+    "asymmetry": false
+   }
+  },
+  {
+   "name": "notch_4k",
+   "lRef": -62.0,
+   "freqsHz": [
+    1000,
+    2000,
+    3000,
+    4000,
+    6000,
+    8000,
+    10000,
+    12500,
+    14000
+   ],
+   "thresholds": {
+    "LEFT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -61.2,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -63.7,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -58.3,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -38.1,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -40.8,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -49.6,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -49.2,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -39.5,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -28.7,
+      "censored": false
+     }
+    ],
+    "RIGHT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -62.1,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -64.6,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -57.4,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -38.3,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -41.6,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -51.8,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -48.4,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -38.2,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -28.9,
+      "censored": false
+     }
+    ]
+   },
+   "expected": {
+    "N": {
+     "LEFT": [
+      -62.0,
+      -62.2,
+      -54.3,
+      -34.300000000000004,
+      -42.199999999999996,
+      -56.4,
+      -59.0,
+      -53.9,
+      -51.9
+     ],
+     "RIGHT": [
+      -62.9,
+      -63.099999999999994,
+      -53.4,
+      -34.5,
+      -43.0,
+      -58.599999999999994,
+      -58.2,
+      -52.6,
+      -52.099999999999994
+     ]
+    },
+    "A": -63.0,
+    "HL": {
+     "LEFT": [
+      1.0,
+      0.7999999999999972,
+      8.700000000000003,
+      28.699999999999996,
+      20.800000000000004,
+      6.600000000000001,
+      4.0,
+      9.100000000000001,
+      11.100000000000001
+     ],
+     "RIGHT": [
+      0.10000000000000142,
+      -0.09999999999999432,
+      9.600000000000001,
+      28.5,
+      20.0,
+      4.400000000000006,
+      4.799999999999997,
+      10.399999999999999,
+      10.900000000000006
+     ]
+    },
+    "pta3": {
+     "LEFT": 10.166666666666664,
+     "RIGHT": 9.500000000000002
+    },
+    "betterEarPta3": 9.500000000000002,
+    "grade": "NORMAL",
+    "ehf": {
+     "LEFT": 8.066666666666668,
+     "RIGHT": 8.700000000000001
+    },
+    "asymmetry": false
+   }
+  },
+  {
+   "name": "asymmetric_right_worse",
+   "lRef": -60.0,
+   "freqsHz": [
+    1000,
+    2000,
+    3000,
+    4000,
+    6000,
+    8000,
+    10000,
+    12500,
+    14000
+   ],
+   "thresholds": {
+    "LEFT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -60.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -62.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -64.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -64.6,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -59.4,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -54.0,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -51.0,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -46.4,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -37.6,
+      "censored": false
+     }
+    ],
+    "RIGHT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -55.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -42.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -39.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -34.6,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -29.4,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -29.0,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -31.0,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -26.4,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -17.6,
+      "censored": false
+     }
+    ]
+   },
+   "expected": {
+    "N": {
+     "LEFT": [
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8
+     ],
+     "RIGHT": [
+      -55.8,
+      -40.8,
+      -35.8,
+      -30.8,
+      -30.799999999999997,
+      -35.8,
+      -40.8,
+      -40.8,
+      -40.8
+     ]
+    },
+    "A": -60.8,
+    "HL": {
+     "LEFT": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "RIGHT": [
+      5.0,
+      20.0,
+      25.0,
+      29.999999999999996,
+      30.0,
+      25.0,
+      20.0,
+      20.0,
+      20.0
+     ]
+    },
+    "pta3": {
+     "LEFT": 0.0,
+     "RIGHT": 18.333333333333332
+    },
+    "betterEarPta3": 0.0,
+    "grade": "NORMAL",
+    "ehf": {
+     "LEFT": 0.0,
+     "RIGHT": 20.0
+    },
+    "asymmetry": true
+   }
+  },
+  {
+   "name": "asymmetric_single_point",
+   "lRef": -60.0,
+   "freqsHz": [
+    1000,
+    2000,
+    3000,
+    4000,
+    6000,
+    8000,
+    10000,
+    12500,
+    14000
+   ],
+   "thresholds": {
+    "LEFT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -60.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -62.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -64.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -64.6,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -59.4,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -54.0,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -51.0,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -46.4,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -37.6,
+      "censored": false
+     }
+    ],
+    "RIGHT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -60.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -62.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -64.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -44.6,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -59.4,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -54.0,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -51.0,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -46.4,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -37.6,
+      "censored": false
+     }
+    ]
+   },
+   "expected": {
+    "N": {
+     "LEFT": [
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8
+     ],
+     "RIGHT": [
+      -60.8,
+      -60.8,
+      -60.8,
+      -40.800000000000004,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8
+     ]
+    },
+    "A": -60.8,
+    "HL": {
+     "LEFT": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "RIGHT": [
+      0.0,
+      0.0,
+      0.0,
+      19.999999999999993,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "pta3": {
+     "LEFT": 0.0,
+     "RIGHT": 6.666666666666664
+    },
+    "betterEarPta3": 0.0,
+    "grade": "NORMAL",
+    "ehf": {
+     "LEFT": 0.0,
+     "RIGHT": 0.0
+    },
+    "asymmetry": false
+   }
+  },
+  {
+   "name": "censored_ehf_only",
+   "lRef": -60.0,
+   "freqsHz": [
+    1000,
+    2000,
+    3000,
+    4000,
+    6000,
+    8000,
+    10000,
+    12500,
+    14000
+   ],
+   "thresholds": {
+    "LEFT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -60.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -62.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -64.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -64.6,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -54.4,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -44.0,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -21.0,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -3.0,
+      "censored": true
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -3.0,
+      "censored": true
+     }
+    ],
+    "RIGHT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -60.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -62.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -64.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -64.6,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -54.4,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -44.0,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -21.0,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -3.0,
+      "censored": true
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -3.0,
+      "censored": true
+     }
+    ]
+   },
+   "expected": {
+    "N": {
+     "LEFT": [
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -55.8,
+      -50.8,
+      -30.8,
+      -17.4,
+      -26.2
+     ],
+     "RIGHT": [
+      -60.8,
+      -60.8,
+      -60.8,
+      -60.8,
+      -55.8,
+      -50.8,
+      -30.8,
+      -17.4,
+      -26.2
+     ]
+    },
+    "A": -60.8,
+    "HL": {
+     "LEFT": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      5.0,
+      10.0,
+      29.999999999999996,
+      43.4,
+      34.599999999999994
+     ],
+     "RIGHT": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      5.0,
+      10.0,
+      29.999999999999996,
+      43.4,
+      34.599999999999994
+     ]
+    },
+    "pta3": {
+     "LEFT": 0.0,
+     "RIGHT": 0.0
+    },
+    "betterEarPta3": 0.0,
+    "grade": "NORMAL",
+    "ehf": {
+     "LEFT": 35.99999999999999,
+     "RIGHT": 35.99999999999999
+    },
+    "asymmetry": false
+   }
+  },
+  {
+   "name": "flat_loss_hidden",
+   "lRef": -60.0,
+   "freqsHz": [
+    1000,
+    2000,
+    3000,
+    4000,
+    6000,
+    8000,
+    10000,
+    12500,
+    14000
+   ],
+   "thresholds": {
+    "LEFT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -35.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -37.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -39.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -39.6,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -34.4,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -29.0,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -26.0,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -21.4,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -12.6,
+      "censored": false
+     }
+    ],
+    "RIGHT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -35.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -37.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -39.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -39.6,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -34.4,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -29.0,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -26.0,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -21.4,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -12.6,
+      "censored": false
+     }
+    ]
+   },
+   "expected": {
+    "N": {
+     "LEFT": [
+      -35.8,
+      -35.8,
+      -35.8,
+      -35.800000000000004,
+      -35.8,
+      -35.8,
+      -35.8,
+      -35.8,
+      -35.8
+     ],
+     "RIGHT": [
+      -35.8,
+      -35.8,
+      -35.8,
+      -35.800000000000004,
+      -35.8,
+      -35.8,
+      -35.8,
+      -35.8,
+      -35.8
+     ]
+    },
+    "A": -35.8,
+    "HL": {
+     "LEFT": [
+      0.0,
+      0.0,
+      0.0,
+      -7.105427357601002e-15,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "RIGHT": [
+      0.0,
+      0.0,
+      0.0,
+      -7.105427357601002e-15,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "pta3": {
+     "LEFT": -2.3684757858670005e-15,
+     "RIGHT": -2.3684757858670005e-15
+    },
+    "betterEarPta3": -2.3684757858670005e-15,
+    "grade": "NORMAL",
+    "ehf": {
+     "LEFT": 0.0,
+     "RIGHT": 0.0
+    },
+    "asymmetry": false
+   }
+  },
+  {
+   "name": "low_lref_window_edge",
+   "lRef": -68.0,
+   "freqsHz": [
+    1000,
+    2000,
+    3000,
+    4000,
+    6000,
+    8000,
+    10000,
+    12500,
+    14000
+   ],
+   "thresholds": {
+    "LEFT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -66.8,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -69.1,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -67.7,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -63.5,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -54.2,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -42.5,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -34.4,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -26.2,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -12.4,
+      "censored": false
+     }
+    ],
+    "RIGHT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -66.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -69.7,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -68.9,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -57.9,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -40.5,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -40.4,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -32.6,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -24.8,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -10.6,
+      "censored": false
+     }
+    ]
+   },
+   "expected": {
+    "N": {
+     "LEFT": [
+      -67.6,
+      -67.6,
+      -63.7,
+      -59.7,
+      -55.6,
+      -49.3,
+      -44.2,
+      -40.6,
+      -35.6
+     ],
+     "RIGHT": [
+      -66.8,
+      -68.2,
+      -64.9,
+      -54.1,
+      -41.9,
+      -47.199999999999996,
+      -42.400000000000006,
+      -39.2,
+      -33.8
+     ]
+    },
+    "A": -67.6,
+    "HL": {
+     "LEFT": [
+      0.0,
+      0.0,
+      3.8999999999999915,
+      7.8999999999999915,
+      11.999999999999993,
+      18.299999999999997,
+      23.39999999999999,
+      26.999999999999993,
+      31.999999999999993
+     ],
+     "RIGHT": [
+      0.7999999999999972,
+      -0.6000000000000085,
+      2.6999999999999886,
+      13.499999999999993,
+      25.699999999999996,
+      20.4,
+      25.19999999999999,
+      28.39999999999999,
+      33.8
+     ]
+    },
+    "pta3": {
+     "LEFT": 2.6333333333333306,
+     "RIGHT": 4.56666666666666
+    },
+    "betterEarPta3": 2.6333333333333306,
+    "grade": "NORMAL",
+    "ehf": {
+     "LEFT": 27.466666666666658,
+     "RIGHT": 29.133333333333326
+    },
+    "asymmetry": false
+   }
+  },
+  {
+   "name": "high_lref_window_edge",
+   "lRef": -50.0,
+   "freqsHz": [
+    1000,
+    2000,
+    3000,
+    4000,
+    6000,
+    8000,
+    10000,
+    12500,
+    14000
+   ],
+   "thresholds": {
+    "LEFT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -50.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -57.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -54.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -49.6,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -39.4,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -34.0,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -26.0,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -16.4,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -3.0,
+      "censored": true
+     }
+    ],
+    "RIGHT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -50.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -52.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -54.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -49.6,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -44.4,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -34.0,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -26.0,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -16.4,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -3.0,
+      "censored": true
+     }
+    ]
+   },
+   "expected": {
+    "N": {
+     "LEFT": [
+      -50.8,
+      -55.8,
+      -50.8,
+      -45.800000000000004,
+      -40.8,
+      -40.8,
+      -35.8,
+      -30.799999999999997,
+      -26.2
+     ],
+     "RIGHT": [
+      -50.8,
+      -50.8,
+      -50.8,
+      -45.800000000000004,
+      -45.8,
+      -40.8,
+      -35.8,
+      -30.799999999999997,
+      -26.2
+     ]
+    },
+    "A": -53.3,
+    "HL": {
+     "LEFT": [
+      2.5,
+      -2.5,
+      2.5,
+      7.499999999999993,
+      12.5,
+      12.5,
+      17.5,
+      22.5,
+      27.099999999999998
+     ],
+     "RIGHT": [
+      2.5,
+      2.5,
+      2.5,
+      7.499999999999993,
+      7.5,
+      12.5,
+      17.5,
+      22.5,
+      27.099999999999998
+     ]
+    },
+    "pta3": {
+     "LEFT": 2.499999999999998,
+     "RIGHT": 4.166666666666664
+    },
+    "betterEarPta3": 2.499999999999998,
+    "grade": "NORMAL",
+    "ehf": {
+     "LEFT": 22.366666666666664,
+     "RIGHT": 22.366666666666664
+    },
+    "asymmetry": false
+   }
+  },
+  {
+   "name": "mixed_left_notch_right_slope",
+   "lRef": -60.0,
+   "freqsHz": [
+    1000,
+    2000,
+    3000,
+    4000,
+    6000,
+    8000,
+    10000,
+    12500,
+    14000
+   ],
+   "thresholds": {
+    "LEFT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -55.9,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -59.5,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -50.4,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -30.8,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -38.0,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -44.1,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -42.0,
+      "censored": false
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -32.3,
+      "censored": false
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -26.1,
+      "censored": false
+     }
+    ],
+    "RIGHT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -52.2,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -49.8,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -40.1,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -26.0,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -10.1,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -4.0,
+      "censored": true
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -3.0,
+      "censored": true
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -3.0,
+      "censored": true
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -3.0,
+      "censored": true
+     }
+    ]
+   },
+   "expected": {
+    "N": {
+     "LEFT": [
+      -56.699999999999996,
+      -58.0,
+      -46.4,
+      -27.0,
+      -39.4,
+      -50.9,
+      -51.8,
+      -46.699999999999996,
+      -49.3
+     ],
+     "RIGHT": [
+      -53.0,
+      -48.3,
+      -36.1,
+      -22.2,
+      -11.5,
+      -10.8,
+      -12.8,
+      -17.4,
+      -26.2
+     ]
+    },
+    "A": -57.349999999999994,
+    "HL": {
+     "LEFT": [
+      0.6499999999999986,
+      -0.6500000000000057,
+      10.949999999999996,
+      30.349999999999994,
+      17.949999999999996,
+      6.449999999999996,
+      5.549999999999997,
+      10.649999999999999,
+      8.049999999999997
+     ],
+     "RIGHT": [
+      4.349999999999994,
+      9.049999999999997,
+      21.249999999999993,
+      35.14999999999999,
+      45.849999999999994,
+      46.55,
+      44.55,
+      39.949999999999996,
+      31.149999999999995
+     ]
+    },
+    "pta3": {
+     "LEFT": 10.116666666666662,
+     "RIGHT": 16.183333333333326
+    },
+    "betterEarPta3": 10.116666666666662,
+    "grade": "NORMAL",
+    "ehf": {
+     "LEFT": 8.08333333333333,
+     "RIGHT": 38.55
+    },
+    "asymmetry": true
+   }
+  },
+  {
+   "name": "mild_grade_reachable",
+   "lRef": -60.0,
+   "freqsHz": [
+    1000,
+    2000,
+    3000,
+    4000,
+    6000,
+    8000,
+    10000,
+    12500,
+    14000
+   ],
+   "thresholds": {
+    "LEFT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -72.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -74.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -44.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -14.6,
+      "censored": false
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -9.4,
+      "censored": false
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -4.0,
+      "censored": false
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -3.0,
+      "censored": true
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -3.0,
+      "censored": true
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -3.0,
+      "censored": true
+     }
+    ],
+    "RIGHT": [
+     {
+      "freqHz": 1000,
+      "levelDbfs": -72.0,
+      "censored": false
+     },
+     {
+      "freqHz": 2000,
+      "levelDbfs": -74.3,
+      "censored": false
+     },
+     {
+      "freqHz": 3000,
+      "levelDbfs": -39.8,
+      "censored": false
+     },
+     {
+      "freqHz": 4000,
+      "levelDbfs": -14.6,
+      "censored": true
+     },
+     {
+      "freqHz": 6000,
+      "levelDbfs": -9.4,
+      "censored": true
+     },
+     {
+      "freqHz": 8000,
+      "levelDbfs": -4.0,
+      "censored": true
+     },
+     {
+      "freqHz": 10000,
+      "levelDbfs": -3.0,
+      "censored": true
+     },
+     {
+      "freqHz": 12500,
+      "levelDbfs": -3.0,
+      "censored": true
+     },
+     {
+      "freqHz": 14000,
+      "levelDbfs": -3.0,
+      "censored": true
+     }
+    ]
+   },
+   "expected": {
+    "N": {
+     "LEFT": [
+      -72.8,
+      -72.8,
+      -40.8,
+      -10.8,
+      -10.8,
+      -10.8,
+      -12.8,
+      -17.4,
+      -26.2
+     ],
+     "RIGHT": [
+      -72.8,
+      -72.8,
+      -35.8,
+      -10.8,
+      -10.8,
+      -10.8,
+      -12.8,
+      -17.4,
+      -26.2
+     ]
+    },
+    "A": -72.8,
+    "HL": {
+     "LEFT": [
+      0.0,
+      0.0,
+      32.0,
+      62.0,
+      62.0,
+      62.0,
+      60.0,
+      55.4,
+      46.599999999999994
+     ],
+     "RIGHT": [
+      0.0,
+      0.0,
+      37.0,
+      62.0,
+      62.0,
+      62.0,
+      60.0,
+      55.4,
+      46.599999999999994
+     ]
+    },
+    "pta3": {
+     "LEFT": 20.666666666666668,
+     "RIGHT": 20.666666666666668
+    },
+    "betterEarPta3": 20.666666666666668,
+    "grade": "MILD",
+    "ehf": {
+     "LEFT": 54.0,
+     "RIGHT": 54.0
+    },
+    "asymmetry": false
+   }
+  }
+ ]
+}

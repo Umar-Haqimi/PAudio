@@ -1,0 +1,242 @@
+{
+ "set": "hughson_westlake",
+ "formatVersion": 1,
+ "generator": "tools/golden/sets/set_8_hw.py",
+ "tolerance": {
+  "levelsDb": 0.0
+ },
+ "cases": [
+  {
+   "name": "normal_convergence",
+   "Lexp": -60,
+   "Lmax": -10,
+   "Lmin": -85,
+   "otherEarThresholdDb": null,
+   "responses": "YYYNNYNNY",
+   "levels": [
+    -40,
+    -50,
+    -60,
+    -70,
+    -65,
+    -60,
+    -70,
+    -65,
+    -60
+   ],
+   "reversals": [
+    -70,
+    -60,
+    -70,
+    -60
+   ],
+   "thresholdDb": -60,
+   "censored": false,
+   "lowConfidence": false,
+   "atFloor": false,
+   "trials": 9
+  },
+  {
+   "name": "censored_at_lmax",
+   "Lexp": -60,
+   "Lmax": -10,
+   "Lmin": -85,
+   "otherEarThresholdDb": null,
+   "responses": "NNNN",
+   "levels": [
+    -40,
+    -30,
+    -20,
+    -10
+   ],
+   "reversals": [],
+   "thresholdDb": -10,
+   "censored": true,
+   "lowConfidence": false,
+   "atFloor": false,
+   "trials": 4
+  },
+  {
+   "name": "immediate_yes_at_start",
+   "Lexp": -60,
+   "Lmax": -10,
+   "Lmin": -85,
+   "otherEarThresholdDb": null,
+   "responses": "YNYNNY",
+   "levels": [
+    -40,
+    -50,
+    -45,
+    -55,
+    -50,
+    -45
+   ],
+   "reversals": [
+    -50,
+    -45,
+    -55,
+    -45
+   ],
+   "thresholdDb": -45,
+   "censored": false,
+   "lowConfidence": false,
+   "atFloor": false,
+   "trials": 6
+  },
+  {
+   "name": "max15_fallback",
+   "Lexp": -60,
+   "Lmax": -10,
+   "Lmin": -85,
+   "otherEarThresholdDb": null,
+   "responses": "YYYNYNNNYNNNYNN",
+   "levels": [
+    -40,
+    -50,
+    -60,
+    -70,
+    -65,
+    -75,
+    -70,
+    -65,
+    -60,
+    -70,
+    -65,
+    -60,
+    -55,
+    -65,
+    -60
+   ],
+   "reversals": [
+    -70,
+    -65,
+    -75,
+    -60,
+    -70,
+    -55,
+    -65
+   ],
+   "thresholdDb": -62.5,
+   "censored": false,
+   "lowConfidence": true,
+   "atFloor": false,
+   "trials": 15
+  },
+  {
+   "name": "ascending_2of3_with_miss",
+   "Lexp": -60,
+   "Lmax": -10,
+   "Lmin": -85,
+   "otherEarThresholdDb": null,
+   "responses": "NYYYNYNNNYNY",
+   "levels": [
+    -40,
+    -30,
+    -40,
+    -50,
+    -60,
+    -55,
+    -65,
+    -60,
+    -55,
+    -50,
+    -60,
+    -55
+   ],
+   "reversals": [
+    -30,
+    -60,
+    -55,
+    -65,
+    -50,
+    -60,
+    -55
+   ],
+   "thresholdDb": -55,
+   "censored": false,
+   "lowConfidence": false,
+   "atFloor": false,
+   "trials": 12
+  },
+  {
+   "name": "start_from_other_ear",
+   "Lexp": -60,
+   "Lmax": -10,
+   "Lmin": -85,
+   "otherEarThresholdDb": -52,
+   "responses": "YYNYNNY",
+   "levels": [
+    -37,
+    -47,
+    -57,
+    -52,
+    -62,
+    -57,
+    -52
+   ],
+   "reversals": [
+    -57,
+    -52,
+    -62,
+    -52
+   ],
+   "thresholdDb": -52,
+   "censored": false,
+   "lowConfidence": false,
+   "atFloor": false,
+   "trials": 7
+  },
+  {
+   "name": "clamp_at_lmin",
+   "Lexp": -60,
+   "Lmax": -10,
+   "Lmin": -85,
+   "otherEarThresholdDb": null,
+   "responses": "YYYYYYY",
+   "levels": [
+    -40,
+    -50,
+    -60,
+    -70,
+    -80,
+    -85,
+    -85
+   ],
+   "reversals": [],
+   "thresholdDb": -85,
+   "censored": false,
+   "lowConfidence": false,
+   "atFloor": true,
+   "trials": 7
+  },
+  {
+   "name": "mixed_start_clamped_to_lmax",
+   "Lexp": -60,
+   "Lmax": -10,
+   "Lmin": -85,
+   "otherEarThresholdDb": -20,
+   "responses": "YYNNYNNY",
+   "levels": [
+    -10,
+    -20,
+    -30,
+    -25,
+    -20,
+    -30,
+    -25,
+    -20
+   ],
+   "reversals": [
+    -30,
+    -20,
+    -30,
+    -20
+   ],
+   "thresholdDb": -20,
+   "censored": false,
+   "lowConfidence": false,
+   "atFloor": false,
+   "trials": 8
+  }
+ ]
+}
