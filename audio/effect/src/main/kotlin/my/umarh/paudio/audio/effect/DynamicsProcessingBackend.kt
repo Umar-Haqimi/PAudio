@@ -91,10 +91,20 @@ class DynamicsProcessingBackend internal constructor(
         try {
             port.setEnabled(enabled)
         } catch (e: RuntimeException) {
-            runCatching { port.release() }
+            disableAndRelease(port)
             throw EffectCreationException(EffectFailureKind.CONFLICT, cause = e)
         }
         return port
+    }
+
+    /**
+     * AOSP `removeHandle_l` hands the departing controller's enabled flag to the next controller (DECISIONS §3), so
+     * a port is ALWAYS disabled before it is released, or another app's lower-priority handle would keep running
+     * PAudio's curve.
+     */
+    internal fun disableAndRelease(port: DpPort) {
+        runCatching { port.setEnabled(false) }
+        runCatching { port.release() }
     }
 
     private fun uoeFailure(e: UnsupportedOperationException): EffectCreationException {
@@ -152,6 +162,7 @@ internal class DpEffectHandle(
     private val backend: DynamicsProcessingBackend,
 ) : EffectHandle {
 
+    /** Guards [port], [rebuilding], [applied], [dirty], [needsReadback]; also the monitor `setEnabled(false)` waits on. */
     private val portLock = Any()
 
     @Volatile private var port: DpPort = initialPort
@@ -262,7 +273,9 @@ internal class DpEffectHandle(
             dirty = true
             needsReadback = true
         }
-        _control.value = false
+        // Re-read instead of blindly publishing false: the control listener may have reported a regain between the
+        // failed write and now, and that regain must not be overwritten (it would stick in Conflict).
+        _control.value = safeHasControl(port)
     }
 
     private fun write(cfg: EqConfig) {
@@ -272,11 +285,13 @@ internal class DpEffectHandle(
             return
         }
         val full = synchronized(portLock) { dirty }
+        // A write skipped by locked{} (released / rebuilding) must leave the handle dirty, never "applied".
+        var skipped = false
         if (full || cfg.preampDb != cur.preampDb) {
-            for (ch in 0 until EqConfig.CHANNELS) locked { port.setInputGain(ch, cfg.preampDb) }
+            for (ch in 0 until EqConfig.CHANNELS) if (!locked { port.setInputGain(ch, cfg.preampDb) }) skipped = true
         }
         if (full || cfg.limiterEnabled != cur.limiterEnabled) {
-            for (ch in 0 until EqConfig.CHANNELS) locked { port.setLimiterEnabled(ch, cfg.limiterEnabled) }
+            for (ch in 0 until EqConfig.CHANNELS) if (!locked { port.setLimiterEnabled(ch, cfg.limiterEnabled) }) skipped = true
         }
         var wrote = full
         // channel 0 first, then channel 1 (DECISIONS §3)
@@ -286,34 +301,38 @@ internal class DpEffectHandle(
             for (k in 0 until cfg.bandCount) {
                 if (full || cfg.bandCutoffsHz[k] != cur.bandCutoffsHz[k] || newGains[k] != oldGains[k]) {
                     if (released.get()) return
-                    locked { port.setPreEqBand(ch, k, DpBand(cfg.bandCutoffsHz[k], newGains[k])) }
+                    if (!locked { port.setPreEqBand(ch, k, DpBand(cfg.bandCutoffsHz[k], newGains[k])) }) skipped = true
                     wrote = true
                 }
             }
         }
         synchronized(portLock) {
-            applied = cfg
-            dirty = false
-            if (wrote) needsReadback = true
+            if (skipped) {
+                dirty = true
+            } else {
+                applied = cfg
+                dirty = false
+                if (wrote) needsReadback = true
+            }
         }
     }
 
     /**
      * Band count changed (ladder step): the effect must be rebuilt, PreEQ size is fixed at construction.
-     * The slow construction runs WITHOUT [portLock] so `setEnabled` (bypass!) never waits for it; the desired
-     * enabled state is read again when the fresh port is installed and ALWAYS written.
+     * The slow construction runs WITHOUT [portLock] so `setEnabled` (bypass!) never blocks on it for long. The fresh
+     * port is created DISABLED and only enabled in the install block below, under [portLock], from the desired state
+     * read at that moment: whichever order a concurrent `setEnabled(false)` (bypass) interleaves in, the fresh port
+     * is never enabled after it returned (either it updated `desiredEnabled` before the install read it, or it is
+     * blocked on [portLock] and disables the installed port right after).
      */
     private fun rebuildWith(cfg: EqConfig) {
         synchronized(portLock) {
             if (released.get()) return
             rebuilding = true
-            try {
-                port.release()
-            } catch (_: RuntimeException) {
-            }
+            backend.disableAndRelease(port)
         }
         val fresh = try {
-            backend.createPort(session, cfg, enabled = desired())
+            backend.createPort(session, cfg, enabled = false)
         } catch (e: EffectCreationException) {
             failRebuild(e.kind)
             return
@@ -321,9 +340,11 @@ internal class DpEffectHandle(
             failRebuild(EffectFailureKind.CREATION_FAILED)
             return
         }
+        var hasControl: Boolean
         synchronized(portLock) {
             if (released.get()) {
-                runCatching { fresh.release() }
+                backend.disableAndRelease(fresh)
+                (portLock as Object).notifyAll()
                 return
             }
             port = fresh
@@ -332,26 +353,34 @@ internal class DpEffectHandle(
             dirty = false
             needsReadback = true
             rebuilding = false
-            _failed.value = null
-            _control.value = safeHasControl(fresh)
+            hasControl = safeHasControl(fresh)
             try {
                 fresh.setEnabled(desired())
             } catch (_: RuntimeException) {
-                _control.value = false
+                hasControl = false
             }
+            (portLock as Object).notifyAll()
         }
+        // Emit outside portLock: inline collectors may take the engine lock (order engine -> portLock).
+        _failed.value = null
+        _control.value = hasControl
     }
 
     private fun failRebuild(kind: EffectFailureKind) {
-        synchronized(portLock) { dirty = true }
+        synchronized(portLock) {
+            dirty = true
+            (portLock as Object).notifyAll()
+        }
         _failed.value = kind
         _control.value = false
     }
 
-    private inline fun locked(block: () -> Unit) {
+    /** Returns false if the block was skipped because the handle is released or being rebuilt. */
+    private inline fun locked(block: () -> Unit): Boolean {
         synchronized(portLock) {
-            if (released.get() || rebuilding) return
+            if (released.get() || rebuilding) return false
             block()
+            return true
         }
     }
 
@@ -383,9 +412,12 @@ internal class DpEffectHandle(
 
     override fun setEnabled(on: Boolean) {
         if (released.get()) return
-        synchronized(stateLock) { desiredEnabled = on }
         try {
             synchronized(portLock) {
+                // Written under portLock so concurrent calls cannot leave port and desired disagreeing, and so the
+                // rebuild install (which reads it under portLock) sees a consistent value.
+                synchronized(stateLock) { desiredEnabled = on }
+                if (!on) awaitRebuildLocked()
                 if (released.get() || rebuilding) return
                 port.setEnabled(on)
             }
@@ -396,13 +428,34 @@ internal class DpEffectHandle(
         }
     }
 
-    override fun release() {
-        if (!released.compareAndSet(false, true)) return
-        synchronized(portLock) {
+    /**
+     * A disable (bypass) waits, bounded by [REBUILD_WAIT_MS], for an in-flight rebuild to install; [Object.wait]
+     * releases [portLock] so the rebuild can finish. On timeout the intent is recorded and the install block
+     * writes it (the fresh port is also created disabled, so no enabled window exists either way).
+     */
+    private fun awaitRebuildLocked() {
+        val deadline = System.nanoTime() + REBUILD_WAIT_MS * 1_000_000
+        while (rebuilding && !released.get()) {
+            val remainingMs = (deadline - System.nanoTime()) / 1_000_000
+            if (remainingMs <= 0) return
             try {
-                port.release()
-            } catch (_: RuntimeException) {
+                (portLock as Object).wait(remainingMs)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return
             }
         }
     }
+
+    override fun release() {
+        if (!released.compareAndSet(false, true)) return
+        synchronized(portLock) {
+            // During a rebuild the old port is already disabled and released.
+            if (!rebuilding) backend.disableAndRelease(port)
+            (portLock as Object).notifyAll()
+        }
+    }
 }
+
+/** Bounded wait of a disable on an in-flight effect rebuild. */
+internal const val REBUILD_WAIT_MS = 250L

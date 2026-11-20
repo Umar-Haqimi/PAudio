@@ -87,6 +87,9 @@ class EffectEngine(
     private var lastMusicAt = 0L
     private var noSessionSince: Long? = null
     private var creating = false
+
+    /** Backend creations currently running outside the lock; [acquire] waits (bounded) for them to settle. */
+    private var inFlightCreates = 0
     private val createTimes = ArrayDeque<Long>()
 
     private val _state = MutableStateFlow<EngineState>(EngineState.Off)
@@ -205,6 +208,21 @@ class EffectEngine(
                 }
                 e.enabled = false
             }
+            // The DP constructor inherits the previous controller's enabled flag; until the creating thread has run
+            // its explicit setEnabled(false) the new effect may process audio. Wait (bounded) for in-flight
+            // creations; wait() releases the monitor so the creating thread's completion can run. On timeout we
+            // proceed: the creation path re-reconciles on completion and sees tokens > 0.
+            val deadline = System.nanoTime() + ACQUIRE_WAIT_MS * 1_000_000
+            while (inFlightCreates > 0) {
+                val remainingMs = (deadline - System.nanoTime()) / 1_000_000
+                if (remainingMs <= 0) break
+                try {
+                    (lock as Object).wait(remainingMs)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                }
+            }
             publishLocked()
         }
         return object : BypassToken {
@@ -212,10 +230,13 @@ class EffectEngine(
             override val reason: BypassReason = reason
             override fun close() {
                 if (!closed.compareAndSet(false, true)) return
+                // Un-bypass is not time-critical and reconcile makes binder calls: keep it off the caller's (maybe main)
+                // thread. The count drops at once so `bypassed` and a following acquire() stay exact.
                 synchronized(lock) {
                     tokens--
-                    reconcileLocked()
+                    publishLocked()
                 }
+                scope.launch { synchronized(lock) { reconcileLocked() } }
             }
         }
     }
@@ -412,14 +433,29 @@ class EffectEngine(
                     is Step.Create -> {
                         var handle: EffectHandle? = null
                         var failure: Exception? = null
+                        var settled = false
                         try {
-                            handle = backend.create(step.e.session, step.cfg)
-                        } catch (ex: CancellationException) {
-                            throw ex
-                        } catch (ex: Exception) {
-                            failure = ex
+                            try {
+                                handle = backend.create(step.e.session, step.cfg)
+                            } catch (ex: CancellationException) {
+                                throw ex
+                            } catch (ex: Exception) {
+                                failure = ex
+                            }
+                            synchronized(lock) {
+                                settled = true
+                                inFlightCreates--
+                                (lock as Object).notifyAll()
+                                finishCreationLocked(step, handle, failure)
+                            }
+                        } finally {
+                            if (!settled) {
+                                synchronized(lock) {
+                                    inFlightCreates--
+                                    (lock as Object).notifyAll()
+                                }
+                            }
                         }
-                        synchronized(lock) { finishCreationLocked(step, handle, failure) }
                     }
                 }
             }
@@ -441,6 +477,7 @@ class EffectEngine(
             return Step.Wait((createTimes.first() + CREATE_WINDOW_MS - now).coerceAtLeast(1))
         }
         createTimes.addLast(now)
+        inFlightCreates++
         return Step.Create(e, e.epoch, target!!)
     }
 
@@ -492,7 +529,13 @@ class EffectEngine(
     private fun onFailed(e: Entry, h: EffectHandle, kind: EffectFailureKind?) = synchronized(lock) {
         if (e.handle !== h) return@synchronized
         e.failed = kind
-        if (kind == EffectFailureKind.CREATION_FAILED) errorCause = EngineError.CREATION_FAILED
+        if (kind != null) {
+            // A failed rebuild leaves a zombie (released port, writes silently skipped): drop the handle so it is
+            // recreated once the cause clears (CREATION_FAILED: after a device change/retry; CONFLICT: on retry).
+            if (kind == EffectFailureKind.CREATION_FAILED) errorCause = EngineError.CREATION_FAILED
+            else e.creationConflict = true
+            releaseHandleLocked(e)
+        }
         reconcileLocked()
     }
 
@@ -582,6 +625,9 @@ class EffectEngine(
         const val IDLE_MS = 10 * 60 * 1000L
         const val NO_SESSION_HINT_MS = 60_000L
         const val TICK_MS = 5_000L
+
+        /** Upper bound [acquire] waits for an in-flight handle creation to apply its disable. */
+        const val ACQUIRE_WAIT_MS = 250L
 
         /** Handle-creation rate limit: at most this many creations per window (burst 16, sustained 4/s). */
         const val MAX_CREATES_PER_WINDOW = 16
