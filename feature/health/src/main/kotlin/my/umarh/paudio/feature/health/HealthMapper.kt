@@ -51,9 +51,16 @@ data class HealthContent(
     val showTrend: Boolean get() = trend.size >= 2
 }
 
+enum class UnavailableReason { TEST_MISSING, PROFILE_MISSING, INCOMPLETE, ERROR }
+
 sealed interface HealthUiState {
     data object Loading : HealthUiState
     data object Empty : HealthUiState
+    /**
+     * Something was asked for (or stored) that cannot be shown. [canShowLatest] offers a switch to the latest test;
+     * it is never true for a missing profile or a load error.
+     */
+    data class Unavailable(val reason: UnavailableReason, val canShowLatest: Boolean = false) : HealthUiState
     data class Content(val content: HealthContent) : HealthUiState
 }
 
