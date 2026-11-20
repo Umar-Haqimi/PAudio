@@ -1,7 +1,11 @@
 package my.umarh.paudio.audio.playback
 
 import com.google.common.truth.Truth.assertThat
+import my.umarh.paudio.core.dsp.DP_FRAME_MS
+import my.umarh.paudio.core.dsp.DpBandLayout
+import my.umarh.paudio.core.dsp.DpBandMapper
 import my.umarh.paudio.core.dsp.DspGrid
+import my.umarh.paudio.core.dsp.dpBlockSize
 import my.umarh.paudio.core.dsp.LoudnessPredictor
 import my.umarh.paudio.core.model.Ear
 import org.junit.Test
@@ -43,10 +47,26 @@ class AbGainPlannerTest {
     @Test fun configForUsesCommonPreamp() {
         val c = AbCurve.Curve(flatCurve(4.0), flatCurve(4.0))
         val plan = AbGainPlanner.resultsAb(c.gLeft, c.gRight, predictor)
-        val cfg = AbGainPlanner.configFor(c, plan)
+        val cfg = AbGainPlanner.configFor(c, plan, 48_000)
         assertThat(cfg.preampDb).isEqualTo(plan.commonPreampDb)
         assertThat(cfg.gainsDb(Ear.LEFT).max()).isWithin(0.01f).of(4f)
-        val flat = AbGainPlanner.configFor(AbCurve.Flat, plan)
+        val flat = AbGainPlanner.configFor(AbCurve.Flat, plan, 48_000)
         assertThat(flat.gainsDb(Ear.LEFT).all { it == 0f }).isTrue()
+    }
+
+    @Test fun configForUsesGivenSampleRateLayout() {
+        val c = AbCurve.Curve(flatCurve(4.0), flatCurve(4.0))
+        val plan = AbGainPlanner.resultsAb(c.gLeft, c.gRight, predictor)
+        val layout = DpBandLayout.of(44_100, dpBlockSize(44_100, DP_FRAME_MS))
+        val cfg = AbGainPlanner.configFor(c, plan, 44_100)
+        assertThat(cfg.bandCutoffsHz).isEqualTo(List(layout.bandCount) { layout.cutoffHz[it].toFloat() })
+        assertThat(cfg.channelGainsDb[0]).isEqualTo(DpBandMapper.map(layout, c.gLeft).toList())
+    }
+
+    @Test fun quieterCurveRaisesInputGainAboveCommonPreamp() {
+        // dL < 0: no headroom guarantee, the limiter is the guard.
+        val plan = AbGainPlanner.resultsAb(flatCurve(-6.0), flatCurve(-6.0), predictor)
+        assertThat(plan.options[1].deltaLDb).isWithin(1e-6).of(-6.0)
+        assertThat(plan.options[1].effectInputGainDb).isWithin(1e-4f).of(plan.commonPreampDb + 6f)
     }
 }

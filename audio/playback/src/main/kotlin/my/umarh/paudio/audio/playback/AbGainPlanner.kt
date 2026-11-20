@@ -1,11 +1,9 @@
 package my.umarh.paudio.audio.playback
 
 import my.umarh.paudio.core.dsp.CurveBuilder
-import my.umarh.paudio.core.dsp.DP_FRAME_MS
-import my.umarh.paudio.core.dsp.DpBandLayout
-import my.umarh.paudio.core.dsp.DpBandMapper
+import my.umarh.paudio.core.dsp.DpEqPlanner
+import my.umarh.paudio.core.dsp.DpLadderStep
 import my.umarh.paudio.core.dsp.LoudnessPredictor
-import my.umarh.paudio.core.dsp.dpBlockSize
 import my.umarh.paudio.core.model.EqConfig
 import kotlin.math.max
 
@@ -38,7 +36,9 @@ data class AbGainPlan(val commonPreampDb: Float, val options: List<AbOptionGain>
  * effectInputGain_i = P_common - ΔL(G_i)     (ΔL(flat) = 0; ΔL from LoudnessPredictor, clip LTAS or pink)
  * ```
  * All options share P_common, so the boost of no option can clip, and the options then differ only by
- * the predicted loudness difference, which is cancelled. The match gain is applied to in-app A/B
+ * the predicted loudness difference, which is cancelled. If ΔL < 0 (curve predicted quieter) the option's
+ * inputGain rises above P_common and may exceed 0 dB: there is no headroom guarantee for that case, the
+ * engine's limiter is the guard (tested in `AbGainPlannerTest`). The match gain is applied to in-app A/B
  * players only, never to the system-wide engine.
  */
 object AbGainPlanner {
@@ -71,14 +71,15 @@ object AbGainPlanner {
     fun preferenceRound(low: AbCurve.Curve, high: AbCurve.Curve, predictor: LoudnessPredictor): AbGainPlan =
         plan(listOf(low, high), predictor)
 
-    /** The [EqConfig] to hand to `swapTo` for [curve]: DP band layout/gains, preamp = P_common. */
-    fun configFor(curve: AbCurve, plan: AbGainPlan, fs: Int = 48_000): EqConfig {
-        val layout = DpBandLayout.of(fs, dpBlockSize(fs, DP_FRAME_MS))
-        val cutoffs = List(layout.bandCount) { layout.cutoffHz[it].toFloat() }
-        val (l, r) = when (curve) {
-            AbCurve.Flat -> FloatArray(layout.bandCount) to FloatArray(layout.bandCount)
-            is AbCurve.Curve -> DpBandMapper.map(layout, curve.gLeft) to DpBandMapper.map(layout, curve.gRight)
+    /**
+     * The [EqConfig] to hand to `swapTo` for [curve]: DP band layout/gains for the device's output
+     * sample rate [fs] and the engine's fallback [ladder], preamp = P_common.
+     */
+    fun configFor(curve: AbCurve, plan: AbGainPlan, fs: Int, ladder: DpLadderStep = DpLadderStep.MAIN): EqConfig {
+        val p = when (curve) {
+            AbCurve.Flat -> DpEqPlanner.flat(fs, ladder = ladder)
+            is AbCurve.Curve -> DpEqPlanner.fromCurve(curve.gLeft, curve.gRight, plan.commonPreampDb, fs, ladder = ladder)
         }
-        return EqConfig(plan.commonPreampDb, cutoffs, listOf(l.toList(), r.toList()))
+        return EqConfig(plan.commonPreampDb, p.cutoffHz.toList(), listOf(p.gainsLeft.toList(), p.gainsRight.toList()))
     }
 }

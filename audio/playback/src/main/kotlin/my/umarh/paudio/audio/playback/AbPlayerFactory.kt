@@ -1,6 +1,7 @@
 package my.umarh.paudio.audio.playback
 
 import android.content.Context
+import android.media.AudioManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import my.umarh.paudio.core.model.BypassController
 import my.umarh.paudio.core.model.BypassReason
@@ -16,6 +17,11 @@ class AbPlayerFactory @Inject constructor(
     private val effectBackend: EffectBackend,
     private val bypass: BypassController,
 ) {
+    /** Output sample rate of the primary output (for `AbGainPlanner.configFor`); 48000 if unavailable. */
+    fun outputSampleRate(): Int =
+        (context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager)
+            ?.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()?.takeIf { it > 0 } ?: 48_000
+
     /** Create on the main thread. [reason] is [BypassReason.RESULTS_AB] or [BypassReason.PREFERENCE_AB]. */
     fun create(reason: BypassReason): ExoAbPlayer = ExoAbPlayer(context, effectBackend, bypass, reason)
 }
