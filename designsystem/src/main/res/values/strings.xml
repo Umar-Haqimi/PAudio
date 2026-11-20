@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Ears -->
+    <string name="ds_ear_right">Right ear</string>
+    <string name="ds_ear_left">Left ear</string>
+
+    <!-- Units / axes -->
+    <string name="ds_khz_value">%1$s kHz</string>
+    <string name="ds_axis_frequency_khz">Frequency (kHz)</string>
+    <string name="ds_axis_level_db">Estimated level (dB)</string>
+    <string name="ds_axis_frequency_hz">Frequency (Hz)</string>
+    <string name="ds_axis_gain_db">Gain (dB)</string>
+
+    <string name="ds_khz_short">%1$sk</string>
+    <string name="ds_eq_legend_left">— %1$s</string>
+    <string name="ds_eq_legend_right">- - %1$s</string>
+
+    <!-- Hear button -->
+    <string name="ds_hear_button_default_label">I heard it</string>
+
+    <!-- Audiogram -->
+    <string name="ds_audiogram_description">Audiogram: frequency in kilohertz against estimated hearing level in decibels. Lower on the chart means a higher estimated level.</string>
+    <string name="ds_audiogram_ear_values">%1$s: %2$s.</string>
+    <string name="ds_audiogram_point">%1$s kilohertz, %2$s decibels%3$s</string>
+    <string name="ds_audiogram_point_censored">, not heard at the loudest level tested</string>
+    <string name="ds_audiogram_point_low_confidence">, low confidence</string>
+    <string name="ds_audiogram_no_data">no data</string>
+    <string name="ds_legend_right_ear">○ Right ear</string>
+    <string name="ds_legend_left_ear">✕ Left ear</string>
+    <string name="ds_legend_censored">↓ Not heard at the loudest level tested</string>
+    <string name="ds_legend_low_confidence">Dashed: low confidence</string>
+
+    <!-- WHO 2021 bands (approximate) -->
+    <string name="ds_who_legend_title">WHO 2021 grade bands (approximate)</string>
+    <string name="ds_who_normal">Normal</string>
+    <string name="ds_who_mild">Mild</string>
+    <string name="ds_who_moderate">Moderate</string>
+    <string name="ds_who_moderately_severe">Moderately severe</string>
+    <string name="ds_who_severe">Severe</string>
+    <string name="ds_who_profound">Profound</string>
+    <string name="ds_who_complete">Complete</string>
+    <string name="ds_who_range_below">below %1$d dB</string>
+    <string name="ds_who_range_between">%1$d to below %2$d dB</string>
+    <string name="ds_who_range_above">%1$d dB and above</string>
+    <string name="ds_who_band_entry">%1$s (%2$s)</string>
+
+    <!-- EQ graph -->
+    <string name="ds_eq_description_personalized">Equalizer graph from 20 hertz to 20 kilohertz, plus or minus 15 decibels. Personalized correction is shown. Largest boost: left ear %1$s decibels, right ear %2$s decibels.</string>
+    <string name="ds_eq_description_original">Equalizer graph from 20 hertz to 20 kilohertz. Original sound: flat, no correction applied.</string>
+
+    <!-- Trend -->
+    <string name="ds_trend_empty">Take another test to see how your results change over time.</string>
+    <string name="ds_trend_description">Trend of the average estimated level at 1, 2 and 4 kilohertz for each ear across %1$d tests.</string>
+    <string name="ds_trend_latest">%1$s, latest: %2$s decibels.</string>
+
+    <!-- Butterfly -->
+    <string name="ds_butterfly_default_description">Hearing butterfly: the left wing is the left ear and the right wing is the right ear. Wider means a lower estimated level.</string>
+
+    <!-- Toggle -->
+    <string name="ds_toggle_personalized">Personalized</string>
+    <string name="ds_toggle_original">Original</string>
+</resources>

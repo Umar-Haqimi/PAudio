@@ -102,4 +102,15 @@
 - Hardware tests (`@RequiresHardware`) in `audio/tone/src/androidTest`; exclude in CI via `-Pandroid.testInstrumentationRunnerArguments.notAnnotation=my.umarh.paudio.testing.RequiresHardware`.
 - M6 review fixes: engine failure recovery (dead-object sink re-creation once, failed engine rebuilt by `open()`), single stable `playing` flow, orphan-waiter/close races, echo suppression (`expectSelf`), `VolumeLock` initial drift + no raising after external lowering, exact-zero silence in 16-bit path, head-reset detection, muted-mic noise chunks skipped.
 - Device verification gap: Samsung `mono_audio` setting key is not covered by `AndroidEnvironmentChecks` (only `master_mono`).
+
+## M8a — designsystem signature components
+
+- Packages: `designsystem.chart` (HearingButterfly, Audiogram + WhoBandLegend/WhoBand, EqGraph, TrendChart), `designsystem.hear` (MorphingHearButton, MorphShape, FrequencyWaveProgress), `designsystem.component` (StatusChip, DisclaimerCard, SectionCard, InstructionRow, SegmentedToggle), root (`PAudioIcons`/`PAudioIcon`, `ProfileSeedColor`, `PAudioTheme`).
+- Experimental M3 Expressive APIs are opted in only in `:designsystem` (`kotlin.compilerOptions.optIn` in its build.gradle.kts); `MaterialShapes`/graphics-shapes never leak into the public API.
+- 42 Material Symbols (Rounded, 400, 24px) vendored as `res/drawable/ic_*.xml` (viewport 960, `translateY=960` group); no tint attr, tint via `Icon`. All strings in `res/values/strings.xml` (`ds_*`).
+- Hear button: no haptics/sound; fires `onPress` on pointer-down and on accessibility click; `View.isSoundEffectsEnabled=false` while composed.
+- Seed colour: hue 200..340 deg (log 1..14 kHz) of the worst-HL frequency, HSV saturation 0.35..0.85 by mean |L-R| (0..30 dB), value 0.75; fallback brand blue.
+- Reduced motion: `ANIMATOR_DURATION_SCALE == 0` skips butterfly draw-in, EQ spring, wave amplitude ease and button pulse.
+- Tests: JVM math/seed tests + Robolectric Compose tests (light/dark, semantics, DisclaimerCard has no click/dismiss/expand/collapse action).
+- Note: `./gradlew verifyFeatureBoundaries` reports "implicit dependency" validation errors when run in the same invocation as other build tasks (pre-existing build-logic issue); run it alone.
 - M7b review fixes: `configFor` takes the real output sample rate and ladder (`AbPlayerFactory.outputSampleRate()`, `DpEqPlanner.fromCurve`); `swapTo` required before `play`; bypass acquired in `load`; device checklist: ClippingMediaSource loop is re-seek (not sample-gapless), duck click-free, focus loss.
