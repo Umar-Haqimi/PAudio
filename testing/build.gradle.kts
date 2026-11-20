@@ -8,4 +8,5 @@ dependencies {
     api(libs.kotlinx.coroutines.test)
     api(libs.truth)
     api(libs.junit)
+    api(libs.turbine)
 }

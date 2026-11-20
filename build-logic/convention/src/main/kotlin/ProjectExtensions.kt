@@ -39,7 +39,9 @@ internal fun Project.configureAndroidCommon(android: CommonExtension) {
     android.defaultConfig.minSdk = MIN_SDK
     android.compileOptions.sourceCompatibility = JAVA_VERSION
     android.compileOptions.targetCompatibility = JAVA_VERSION
-    android.testOptions.unitTests.isReturnDefaultValues = true
+    android.defaultConfig.testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    // Robolectric tests may read resources; Android framework calls are NOT stubbed (no isReturnDefaultValues).
+    android.testOptions.unitTests.isIncludeAndroidResources = true
     configureKotlinJvmTarget()
 }
 
@@ -54,4 +56,21 @@ internal fun Project.addCommonTestDependencies() {
     addLib("testImplementation", "junit")
     addLib("testImplementation", "truth")
     addLib("testImplementation", "kotlinx-coroutines-test")
+}
+
+/** Extra test dependencies for every Android module (JVM unit tests via Robolectric + instrumented tests). */
+internal fun Project.addAndroidTestDependencies() {
+    // Modules legitimately start without tests (and Room adds a schemas test source dir); don't fail on "no tests".
+    tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach { failOnNoDiscoveredTests.set(false) }
+    addCommonTestDependencies()
+    addLib("testImplementation", "turbine")
+    addLib("testImplementation", "robolectric")
+    addLib("testImplementation", "androidx-test-core")
+    addLib("testImplementation", "androidx-test-ext-junit")
+    addLib("androidTestImplementation", "androidx-test-runner")
+    addLib("androidTestImplementation", "androidx-test-core")
+    addLib("androidTestImplementation", "androidx-test-ext-junit")
+    addLib("androidTestImplementation", "junit")
+    addLib("androidTestImplementation", "truth")
+    addLib("androidTestImplementation", "kotlinx-coroutines-test")
 }

@@ -7,6 +7,7 @@ group = "my.umarh.paudio.buildlogic"
 dependencies {
     compileOnly(libs.android.gradlePlugin)
     compileOnly(libs.kotlin.gradlePlugin)
+    compileOnly(libs.androidx.room.gradlePlugin)
 }
 
 gradlePlugin {
@@ -34,6 +35,10 @@ gradlePlugin {
         register("hilt") {
             id = "paudio.hilt"
             implementationClass = "HiltConventionPlugin"
+        }
+        register("room") {
+            id = "paudio.android.room"
+            implementationClass = "RoomConventionPlugin"
         }
         register("coreGuard") {
             id = "paudio.core.guard"

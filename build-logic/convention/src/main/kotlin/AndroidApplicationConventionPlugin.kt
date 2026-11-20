@@ -26,6 +26,7 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             signingValue("keyAlias", "PAUDIO_KEY_ALIAS") != null &&
             signingValue("keyPassword", "PAUDIO_KEY_PASSWORD") != null
 
+        addAndroidTestDependencies()
         extensions.configure<ApplicationExtension> {
             namespace = PACKAGE_ROOT
             configureAndroidCommon(this)
@@ -64,16 +65,29 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             }
         }
 
-        // SPEC §6: fail the build if a forbidden permission appears in the merged RELEASE manifest.
+        // SPEC §6: fail the build if a forbidden / non-allow-listed permission appears in a merged RELEASE manifest.
+        // One task per release-type variant (safe with flavors) plus the aggregate `verifyPermissions`.
+        val verifyAll = tasks.register("verifyPermissions") {
+            group = "verification"
+            description = "Fails if a merged release manifest declares a forbidden or non-allow-listed permission (SPEC §6)."
+        }
+        tasks.named("check") { dependsOn(verifyAll) }
         extensions.getByType<ApplicationAndroidComponentsExtension>().apply {
             onVariants(selector().withBuildType("release")) { variant ->
-                val verify = tasks.register<VerifyPermissionsTask>("verifyPermissions") {
+                val capName = variant.name.replaceFirstChar { it.uppercase() }
+                val verify = tasks.register<VerifyPermissionsTask>("verify${capName}Permissions") {
                     group = "verification"
-                    description = "Fails if the merged release manifest declares a forbidden permission (SPEC §6)."
+                    description = "Verifies permissions of the merged ${variant.name} manifest (SPEC §6)."
                     mergedManifest.set(variant.artifacts.get(SingleArtifact.MERGED_MANIFEST))
                     forbiddenPermissions.set(VerifyPermissionsTask.FORBIDDEN)
+                    allowedPermissions.set(VerifyPermissionsTask.ALLOWED)
+                    applicationId.set(variant.applicationId)
+                    report.set(layout.buildDirectory.file("reports/permissions/${variant.name}.txt"))
                 }
-                tasks.named("check") { dependsOn(verify) }
+                verifyAll.configure { dependsOn(verify) }
+                // Never package a release artifact whose permissions were not verified.
+                tasks.matching { it.name == "assemble$capName" || it.name == "bundle$capName" }
+                    .configureEach { dependsOn(verify) }
             }
         }
     }

@@ -11,8 +11,16 @@ import java.util.concurrent.CopyOnWriteArrayList
 class FakeEffectBackend : EffectBackend {
     val handles: MutableList<FakeEffectHandle> = CopyOnWriteArrayList()
 
-    /** Handles that are enabled, not released and hold control. */
+    /**
+     * Handles that would currently process audio: enabled, not released AND still holding control.
+     * (A handle that lost control to another EQ app, SPEC trap 15, does nothing.) Use [enabledRequested]
+     * to ignore the control state, e.g. for the P0 "no enabled effect while tones play" assertion.
+     */
     val activeEnabled: List<FakeEffectHandle>
+        get() = handles.filter { it.enabled && !it.released && it.control.value }
+
+    /** Handles whose `setEnabled(true)` is in effect and that are not released, regardless of control. */
+    val enabledRequested: List<FakeEffectHandle>
         get() = handles.filter { it.enabled && !it.released }
 
     val anyEnabled: Boolean get() = activeEnabled.isNotEmpty()

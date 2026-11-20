@@ -13,7 +13,7 @@ class AndroidLibraryConventionPlugin : Plugin<Project> {
             configureAndroidCommon(this)
             testOptions.targetSdk = TARGET_SDK
         }
-        addCommonTestDependencies()
+        addAndroidTestDependencies()
         addLib("implementation", "kotlinx-coroutines-core")
     }
 }

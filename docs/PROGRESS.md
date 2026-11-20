@@ -24,6 +24,22 @@
 - `:app:verifyPermissions` (merged release manifest, wired into `check`) and `verifyPureKotlin` on every `:core:*` module (wired into `check`). Both proven to fail on a violation.
 - CI: `.github/workflows/ci.yml` (temurin 21, Android SDK, Gradle cache, `./gradlew check assembleDebug`).
 
+### M1 review fixes (applied after af91ec5)
+- Manifest: removed Media3's `ACCESS_NETWORK_STATE`/`WAKE_LOCK` and the exported `androidx.profileinstaller.ProfileInstallReceiver` (`tools:node="remove"`).
+- `verifyPermissions` is now an aggregate over per-variant `verify<Variant>Permissions` tasks (release-type variants only; safe with flavors). Besides the forbidden list it
+  fails on any permission not on an allow-list (`MODIFY_AUDIO_SETTINGS`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SPECIAL_USE`, `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`,
+  `RECORD_AUDIO`, `$applicationId.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`). `assemble<Variant>`/`bundle<Variant>` depend on it. Not cacheable; writes `app/build/reports/permissions/<variant>.txt`.
+  Both failure paths were demonstrated (WAKE_LOCK -> allow-list error, INTERNET -> forbidden error) and reverted.
+- JSON schema: `TrialJson.levelDbfs` nullable (catch trials), optional `run` ("DESC"/"ASC", Thorough only) with documented Thorough semantics, `HearingTestJson.reliable` required,
+  `deviceSnapshotJson` is a `JsonElement?`, unknown `OutputDeviceType` decodes to `OTHER` (unknown `TestMode` still rejected). `HeadsetKey` upper-cases the BT suffix and maps `|` in names to `/`; enum names are pinned by a test.
+- Test setup: `isReturnDefaultValues` removed, `isIncludeAndroidResources = true`, `AndroidJUnitRunner`; catalog has androidx.test runner/core 1.7.0 and hilt-android-testing; Android modules get
+  junit/truth/coroutines-test/turbine/robolectric (+ androidx.test) and Compose modules get the BOM and ui-test-junit4 (+ ui-test-manifest in debug). `failOnNoDiscoveredTests` is off.
+- Room: `paudio.android.room` convention (KSP + `androidx.room` plugin, `schemaDirectory("$projectDir/schemas")`, room-testing) is applied, with `paudio.hilt`, to `:data` (builds fine with no entities yet).
+- `:testing`: added `FakeNoiseMeter`, `FakeSessionSource`, `FakeAbPlayer`; `FakeVolumeController.changes` emits external changes only (`externalChange(i)`); `FakeEffectBackend.activeEnabled`
+  now also requires control (`enabledRequested` ignores it).
+- `:designsystem` exposes graphics-shapes and MaterialKolor as `implementation`. Root `verifyFeatureBoundaries` (in `check`) fails if `feature/**` references `MaterialShapes`, `androidx.graphics.shapes` or `ExperimentalMaterial3ExpressiveApi`.
+- CI: `cmdline-tools-version: 16111833` (latest found), `:app:assembleRelease` added.
+
 ## Next
 - M2: `:core:dsp` + golden tooling. M0 (research, `docs/DECISIONS.md`) is being written separately; confirm `Ear.channelIndex` mapping, DP band semantics there.
 - Add permissions as the milestones need them (`MODIFY_AUDIO_SETTINGS`, FGS, `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`, optional `RECORD_AUDIO`); `verifyPermissions` guards the forbidden list.

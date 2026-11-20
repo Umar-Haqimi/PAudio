@@ -21,14 +21,19 @@ class ProfileJsonTest {
         tests = listOf(
             HearingTestJson(
                 mode = TestMode.QUICK, startedAt = 5, durationMs = 300_000, volIndex = 4, volMax = 15,
-                lRef = -61.3f, appVersion = "0.1.0", algoVersion = 1, fpRate = 0.1f,
+                lRef = -61.3f, reliable = true, appVersion = "0.1.0", algoVersion = 1, fpRate = 0.1f,
                 thresholds = FrequencyGrid.TEST_FREQUENCIES_HZ.flatMap { f ->
                     Ear.entries.map { ear ->
                         ThresholdJson(ear, f, levelDbfs = if (f == 14000) null else -55.1f - f / 1000f,
                             censored = f == 14000, lowConfidence = f == 12500, trials = 7)
                     }
                 },
-                trials = listOf(TrialJson(0, Ear.LEFT, 1000, -50f, isCatch = false, response = true, tMs = 1234)),
+                deviceSnapshotJson = buildJsonObject { put("ancOn", false) },
+                trials = listOf(
+                    TrialJson(0, Ear.LEFT, 1000, -50f, isCatch = false, response = true, tMs = 1234),
+                    TrialJson(1, Ear.RIGHT, 2000, levelDbfs = null, isCatch = true, response = false, tMs = 2000),
+                    TrialJson(2, Ear.LEFT, 3000, -48f, response = false, run = "DESC", tMs = 3000),
+                ),
             ),
         ),
         preferenceTests = listOf(
@@ -60,5 +65,20 @@ class ProfileJsonTest {
         listOf("", "[]", "42", "{", "{\"schemaVersion\":1}", "{\"schemaVersion\":\"x\"}").forEach {
             assertThrows(SerializationException::class.java) { ProfileJson.decode(it) }
         }
+    }
+
+    @Test
+    fun unknownDeviceTypeDecodesToOtherButUnknownTestModeIsRejected() {
+        val base = ProfileJson.encode(sample())
+        val withType = base.replace("\"BLUETOOTH_A2DP\"", "\"HOLOGRAM\"")
+        assertThat(ProfileJson.decode(withType).headset!!.type).isEqualTo(OutputDeviceType.OTHER)
+        val badMode = base.replace("\"QUICK\"", "\"WEIRD\"")
+        assertThrows(SerializationException::class.java) { ProfileJson.decode(badMode) }
+    }
+
+    @Test
+    fun missingReliableFlagIsRejected() {
+        val text = ProfileJson.encode(sample()).replace("\"reliable\":true,", "")
+        assertThrows(SerializationException::class.java) { ProfileJson.decode(text) }
     }
 }
