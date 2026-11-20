@@ -79,3 +79,10 @@
 - **Configuration cache, parallel and build cache are on** and working.
 - **Navigation**: Navigation Compose 2.10 type-safe routes (`@Serializable data object XxxRoute`); the feature convention applies the serialization plugin.
 - **Android launcher icon**: placeholder vector headphones (adaptive + monochrome).
+
+## M6 — audio:tone + audio:device
+
+- `:audio:tone`: `StreamScheduler` (pure silence/stimulus/25 ms raised-cosine ramp-down), `StreamEngine` (writer thread over a `PcmSink`), `AudioTrackToneOutput` (one continuous float AudioTrack, 16-bit TPDF fallback), `AndroidVolumeController` + `VolumeLock`, `AudioFocusMonitor`, Hilt `ToneModule`.
+- `:audio:device`: `DeviceMapping`, `AndroidOutputDevices`, `AndroidEnvironmentChecks` + `EnvironmentVerdict`, `AndroidNoiseMeter` + `NoiseLevel`, Hilt `DeviceModule`.
+- `:core:model`: added `InterruptibleToneOutput` (extension of `ToneOutput`); `:testing`: `RequiresHardware`, `FakeToneOutput` implements the extension.
+- Hardware tests (`@RequiresHardware`) in `audio/tone/src/androidTest`; exclude in CI via `-Pandroid.testInstrumentationRunnerArguments.notAnnotation=my.umarh.paudio.testing.RequiresHardware`.
