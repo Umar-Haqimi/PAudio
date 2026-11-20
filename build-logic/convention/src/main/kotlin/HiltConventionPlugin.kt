@@ -7,5 +7,7 @@ class HiltConventionPlugin : Plugin<Project> {
         pluginManager.apply("com.google.dagger.hilt.android")
         addLib("implementation", "hilt-android")
         addLib("ksp", "hilt-compiler")
+        addLib("testImplementation", "hilt-android-testing")
+        addLib("androidTestImplementation", "hilt-android-testing")
     }
 }

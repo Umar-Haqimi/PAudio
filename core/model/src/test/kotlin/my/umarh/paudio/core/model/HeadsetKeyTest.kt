@@ -34,4 +34,18 @@ class HeadsetKeyTest {
             OutputDeviceType.BLUETOOTH_A2DP, OutputDeviceType.BLUETOOTH_LE,
         )
     }
+
+    @Test
+    fun suffixIsUpperCasedAndPipesInNameAreReplaced() {
+        val key = HeadsetKey.of(OutputDeviceType.BLUETOOTH_LE, " A|B Buds ", "ab:cd")
+        assertThat(key.value).isEqualTo("BLUETOOTH_LE|A/B Buds|AB:CD")
+    }
+
+    @Test
+    fun enumNamesUsedInKeysArePinned() {
+        // These names are persisted in keys and in exported JSON; renaming them breaks existing profiles.
+        assertThat(OutputDeviceType.entries.map { it.name }).containsExactly(
+            "WIRED", "USB", "BLUETOOTH_A2DP", "BLUETOOTH_LE", "SPEAKER", "EARPIECE", "HDMI", "OTHER",
+        ).inOrder()
+    }
 }

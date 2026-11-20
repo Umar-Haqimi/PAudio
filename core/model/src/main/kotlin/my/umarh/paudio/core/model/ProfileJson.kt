@@ -67,13 +67,15 @@ data class HearingTestJson(
     val volMax: Int,
     /** 1 kHz binaural threshold at the locked volume (dBFS). */
     val lRef: Float,
-    val deviceSnapshotJson: String? = null,
+    /** Device/environment snapshot as embedded JSON (Room may store it as a string). */
+    val deviceSnapshotJson: JsonElement? = null,
     val ancOn: Boolean? = null,
     val appVersion: String,
     val algoVersion: Int,
     /** Catch-trial false-positive rate (Quick mode). */
     val fpRate: Float? = null,
-    val reliable: Boolean = true,
+    /** Required: a missing flag must not silently become "reliable". */
+    val reliable: Boolean,
     val thresholds: List<ThresholdJson>,
     /** Raw trial log; optional. */
     val trials: List<TrialJson>? = null,
@@ -90,15 +92,28 @@ data class ThresholdJson(
     val trials: Int = 0,
 )
 
+/**
+ * One raw trial. Never contains NaN/Infinity: the JSON encoder rejects them, so catch trials use `null`.
+ *
+ * Quick mode: `levelDbfs` is the presented level (null for catch trials, which present no tone),
+ * `response` = the listener said "heard", `run` = null.
+ *
+ * Thorough mode (the listener adjusts the level): `run` is "DESC" (level lowered until inaudible) or
+ * "ASC" (raised until audible); `levelDbfs` is the level the listener CONFIRMED, and `response` is
+ * true for "can hear it now" (ASC) / false for "can't hear it anymore" (DESC).
+ */
 @Serializable
 data class TrialJson(
     val seq: Int,
     val ear: Ear,
     val freqHz: Int,
-    val levelDbfs: Float,
+    /** dBFS; null for catch trials. */
+    val levelDbfs: Float? = null,
     val isCatch: Boolean = false,
-    /** true = "heard". */
+    /** true = "heard" / "can hear it now" (see class docs). */
     val response: Boolean,
+    /** Thorough mode only: "DESC" or "ASC"; null for Quick. */
+    val run: String? = null,
     /** Milliseconds since test start. */
     val tMs: Long,
 )

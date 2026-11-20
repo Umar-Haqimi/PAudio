@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.hilt) apply false
+    alias(libs.plugins.androidx.room) apply false
     id("paudio.core.guard") apply false
 }
 
@@ -17,3 +18,13 @@ subprojects {
         apply(plugin = "paudio.core.guard")
     }
 }
+
+// SPEC §2.2 trap 19: no direct use of experimental shape/expressive APIs in feature modules.
+val verifyFeatureBoundaries = tasks.register<VerifyFeatureBoundariesTask>("verifyFeatureBoundaries") {
+    group = "verification"
+    description = "Fails if feature/** uses MaterialShapes, graphics-shapes or @ExperimentalMaterial3ExpressiveApi."
+    sources.from(fileTree("feature") { include("**/*.kt") })
+    forbiddenPatterns.set(VerifyFeatureBoundariesTask.FORBIDDEN)
+    marker.set(layout.buildDirectory.file("reports/feature-boundaries.txt"))
+}
+tasks.named("check") { dependsOn(verifyFeatureBoundaries) }

@@ -1,8 +1,14 @@
 package my.umarh.paudio.core.model
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 
-@Serializable
+@Serializable(with = OutputDeviceTypeSerializer::class)
 enum class OutputDeviceType {
     WIRED,
     USB,
@@ -47,5 +53,17 @@ data class OutputDevice(
         /** Derives the stored suffix from a raw `AudioDeviceInfo.getAddress()` value. */
         fun addressSuffixOf(type: OutputDeviceType, rawAddress: String?): String =
             if (type.isBluetooth && rawAddress != null) rawAddress.takeLast(ADDRESS_SUFFIX_LENGTH) else ""
+    }
+}
+
+/** Serialises by enum name; an unknown name (newer export, older app) decodes to [OutputDeviceType.OTHER]. */
+internal object OutputDeviceTypeSerializer : KSerializer<OutputDeviceType> {
+    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("OutputDeviceType", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: Encoder, value: OutputDeviceType) = encoder.encodeString(value.name)
+
+    override fun deserialize(decoder: Decoder): OutputDeviceType {
+        val name = decoder.decodeString()
+        return OutputDeviceType.entries.firstOrNull { it.name == name } ?: OutputDeviceType.OTHER
     }
 }

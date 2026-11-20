@@ -1,5 +1,7 @@
 plugins {
     id("paudio.android.library")
+    id("paudio.android.room")
+    id("paudio.hilt")
 }
 
 dependencies {
