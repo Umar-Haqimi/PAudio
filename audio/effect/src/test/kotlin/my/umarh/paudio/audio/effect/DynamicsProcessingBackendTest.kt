@@ -333,4 +333,17 @@ class DynamicsProcessingBackendTest {
         flush()
         assertThat(ports.single().bandWrites).isEmpty()
     }
+
+    @Test
+    fun disableAfterFailedRebuildReturnsQuickly() {
+        val h = backend.create(3, cfg(bands = 6))
+        factory.failures += RuntimeException("1")
+        factory.failures += RuntimeException("2")
+        h.apply(cfg(bands = 4))
+        flush()
+        assertThat(h.failed.value).isEqualTo(EffectFailureKind.CREATION_FAILED)
+        val t0 = System.nanoTime()
+        h.setEnabled(false)
+        assertThat((System.nanoTime() - t0) / 1_000_000).isLessThan(REBUILD_WAIT_MS / 2)
+    }
 }

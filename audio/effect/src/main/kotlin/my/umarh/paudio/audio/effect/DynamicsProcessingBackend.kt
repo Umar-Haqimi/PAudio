@@ -169,6 +169,9 @@ internal class DpEffectHandle(
 
     /** True between releasing the old port and installing the rebuilt one; setEnabled only records intent then. */
     private var rebuilding = false
+
+    /** A rebuild failed (guarded by portLock): [rebuilding] stays true so writes are skipped, but waiters stop waiting. */
+    private var rebuildFailed = false
     private val released = AtomicBoolean(false)
 
     // What is currently programmed on the effect (guarded by portLock).
@@ -329,6 +332,7 @@ internal class DpEffectHandle(
         synchronized(portLock) {
             if (released.get()) return
             rebuilding = true
+            rebuildFailed = false
             backend.disableAndRelease(port)
         }
         val fresh = try {
@@ -369,6 +373,7 @@ internal class DpEffectHandle(
     private fun failRebuild(kind: EffectFailureKind) {
         synchronized(portLock) {
             dirty = true
+            rebuildFailed = true
             (portLock as Object).notifyAll()
         }
         _failed.value = kind
@@ -435,7 +440,7 @@ internal class DpEffectHandle(
      */
     private fun awaitRebuildLocked() {
         val deadline = System.nanoTime() + REBUILD_WAIT_MS * 1_000_000
-        while (rebuilding && !released.get()) {
+        while (rebuilding && !rebuildFailed && !released.get()) {
             val remainingMs = (deadline - System.nanoTime()) / 1_000_000
             if (remainingMs <= 0) return
             try {

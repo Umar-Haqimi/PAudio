@@ -174,8 +174,8 @@ class EffectEngineTest {
 
         // everything that could re-enable while bypassed
         r.session.open(6, "late")
-        assertThat(r.backend.handles).hasSize(2) // created
-        assertThat(r.backend.enabledRequested).isEmpty() // but kept disabled
+        assertThat(r.backend.handles).hasSize(1) // no creation starts during a bypass
+        assertThat(r.backend.enabledRequested).isEmpty()
         r.engine.setTarget(r.cfg2)
         assertThat(r.backend.enabledRequested).isEmpty()
         r.engine.setOutputDevice(FakeOutputDevices.BLUETOOTH_BUDS)
@@ -391,12 +391,8 @@ class EffectEngineTest {
         r.start()
         val t = r.engine.acquire(BypassReason.CALIBRATION)
         r.session.open(5, "p")
-        assertThat(r.backend.handles).hasSize(1)
-        assertThat(r.backend.enabledRequested).isEmpty()
+        assertThat(r.backend.handles).isEmpty() // no creation during a bypass
         r.engine.retry()
-        assertThat(r.backend.enabledRequested).isEmpty()
-        r.backend.handles.last().setControl(false)
-        r.backend.handles.last().setControl(true)
         assertThat(r.backend.enabledRequested).isEmpty()
         t.close()
         assertThat(r.backend.enabledRequested).hasSize(1)
@@ -552,5 +548,18 @@ class EffectEngineTest {
         r.session.open(5, "p")
         advanceTimeBy(10_000)
         assertThat(r.engine.noSessionHint.value).isFalse()
+    }
+
+    @Test
+    fun noCreationDuringBypassUntilTokenCloses() = runTest {
+        val r = Rig(this)
+        r.start()
+        val tok = r.engine.acquire(BypassReason.CALIBRATION)
+        r.session.open(5, "p")
+        assertThat(r.backend.createCalls).isEmpty()
+        tok.close()
+        assertThat(r.backend.createCalls).containsExactly(5)
+        assertThat(r.backend.handles.single().enabled).isTrue()
+        assertThat(r.engine.state.value).isEqualTo(EngineState.Active(listOf("p")))
     }
 }

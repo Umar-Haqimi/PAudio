@@ -407,7 +407,9 @@ class EffectEngine(
     private fun needsCreation(e: Entry) = e.handle == null && !e.creationConflict
 
     private fun pumpCreationsLocked() {
-        if (creating || errorCause != null || !canHoldLocked()) return
+        // No creation starts during a bypass: the DP constructor could inherit "enabled" from another app's handle.
+        // close()'s reconcile re-enters here once the last token is gone.
+        if (creating || errorCause != null || tokens > 0 || !canHoldLocked()) return
         if (sessions.values.none(::needsCreation)) return
         creating = true
         scope.launch { createLoop() }
@@ -466,7 +468,7 @@ class EffectEngine(
 
     /** Decides the next creation; on Done `creating` is cleared in the same critical section (no missed wake-up). */
     private fun nextStepLocked(): Step {
-        val e = if (errorCause != null || !canHoldLocked()) null else sessions.values.firstOrNull(::needsCreation)
+        val e = if (errorCause != null || tokens > 0 || !canHoldLocked()) null else sessions.values.firstOrNull(::needsCreation)
         if (e == null) {
             creating = false
             return Step.Done
