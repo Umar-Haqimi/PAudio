@@ -162,6 +162,9 @@ class TestSession(
     private var t0 = 0L
     private var calWarning = false
 
+    /** The unexpected exception that ended the session (diagnostics/tests only; never logged). */
+    @Volatile internal var lastFailure: Throwable? = null
+
     val isActive: Boolean get() = job?.isActive == true
 
     fun start(): Job {
@@ -343,6 +346,7 @@ class TestSession(
             terminal = SessionState.Aborted(AbortReason.USER)
             throw e
         } catch (e: Throwable) {
+            lastFailure = e
             terminal = SessionState.Aborted(AbortReason.AUDIO_ERROR)
         } finally {
             // Order matters (P0): nothing may be audible once the token is gone, so the stream goes first and the
@@ -365,7 +369,13 @@ class TestSession(
                 }
             },
             launch {
-                lock.drift.collect { if (!driftSuppressed.get()) raise(PauseReason.VOLUME_CHANGED) }
+                // Re-check the live index: a stale event (already corrected by a resume) must not pause again.
+                lock.drift.collect {
+                    val locked = lock.lockedIndex
+                    if (!driftSuppressed.get() && locked != null && deps.volume.index() != locked) {
+                        raise(PauseReason.VOLUME_CHANGED)
+                    }
+                }
             },
             launch {
                 deps.focus.events.collect { e ->
@@ -445,7 +455,10 @@ class TestSession(
             awaitNotPaused()
             val box = try {
                 runUntilPaused(block)
+            } catch (e: CancellationException) {
+                throw e // java.util.concurrent.CancellationException IS an IllegalStateException: never swallow it
             } catch (e: IllegalStateException) {
+                lastFailure = e
                 if (++streamFailures > MAX_STREAM_FAILURES) throw AbortException(AbortReason.AUDIO_ERROR)
                 try {
                     deps.tone.open(sampleRate)

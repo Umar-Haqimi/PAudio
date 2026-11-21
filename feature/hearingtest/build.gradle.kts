@@ -11,5 +11,6 @@ dependencies {
     implementation(libs.androidx.activity.compose)
 
     testImplementation(project(":testing"))
+    testImplementation(project(":audio:effect"))
     testImplementation(testFixtures(project(":core:audiometry")))
 }

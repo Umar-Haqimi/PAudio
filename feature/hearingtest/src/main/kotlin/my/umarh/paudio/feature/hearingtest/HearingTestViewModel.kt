@@ -135,6 +135,9 @@ class HearingTestViewModel internal constructor(
     private var session: TestSession? = null
     private var lastMode: TestMode = TestMode.QUICK
 
+    /** The running session (tests only). */
+    internal val currentSession: TestSession? get() = session
+
     private val _events = Channel<HearingTestEvent>(Channel.BUFFERED)
     val events: Flow<HearingTestEvent> = _events.receiveAsFlow()
 

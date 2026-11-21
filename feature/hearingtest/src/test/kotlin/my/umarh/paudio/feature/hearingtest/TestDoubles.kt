@@ -133,6 +133,8 @@ class ScriptedTone(
             if (timed) {
                 val ms = stimulus.frames * 1000L / stimulus.sampleRate
                 withTimeoutOrNull(ms) { stop.await() }
+            } else {
+                kotlinx.coroutines.yield() // an instant double must still be a cancellation point
             }
         } finally {
             _playing.value = false
@@ -143,7 +145,7 @@ class ScriptedTone(
     override suspend fun playSilence(ms: Int) {
         check(isOpen) { "ToneOutput not open" }
         requireBypass("playSilence")
-        if (timed) delay(ms.toLong())
+        if (timed) delay(ms.toLong()) else kotlinx.coroutines.yield()
     }
 
     override suspend fun stopCurrent() {

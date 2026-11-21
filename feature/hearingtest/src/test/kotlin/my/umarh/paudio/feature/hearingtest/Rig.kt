@@ -85,9 +85,17 @@ class Brain(
     private val thoroughRunMs: Long = 0,
     /** Level at which the person taps the calibration ramp, per volume index (default: -56 at every index). */
     private val tapAt: (Int) -> Double = { -56.0 },
+    /** The session to answer for (the ViewModel creates its own). */
+    private val sessionProvider: (() -> TestSession)? = null,
 ) {
+    private fun sess(): TestSession = sessionProvider?.invoke() ?: rig.session
+
     /** UI tests answer some Quick trials by clicking; set false to leave trials open. */
     @Volatile var autoQuick = true
+
+    /** The first N Quick trials are left open (a UI test answers them by clicking). */
+    @Volatile var leaveOpen = 0
+    private val opened = java.util.concurrent.atomic.AtomicInteger(0)
     @Volatile var wrongEarFirst = false
     private var channelAnswers = 0
     private var runBusy = false
@@ -99,26 +107,26 @@ class Brain(
     }
 
     private fun react(b: StereoBuffer) {
-        val st = rig.session.state.value
+        val st = sess().state.value
         val info = b.info()
         when {
             st is SessionState.ChannelCheck -> {
                 val correct = if (info.ear == Ear.LEFT) ChannelAnswer.LEFT else ChannelAnswer.RIGHT
                 val wrong = if (correct == ChannelAnswer.LEFT) ChannelAnswer.RIGHT else ChannelAnswer.LEFT
-                rig.session.answerChannel(if (wrongEarFirst && channelAnswers++ == 0) wrong else correct)
+                sess().answerChannel(if (wrongEarFirst && channelAnswers++ == 0) wrong else correct)
             }
             st is SessionState.Calibrating && st.phase == CalibrationPhase.RAMP ->
-                if (!info.silent && info.levelDbfs >= tapAt(rig.volume.index()) - 0.01) rig.session.calibrationTap()
-            st is SessionState.Testing && st.mode == TestMode.QUICK && st.trialOpen && autoQuick -> {
+                if (!info.silent && info.levelDbfs >= tapAt(rig.volume.index()) - 0.01) sess().calibrationTap()
+            st is SessionState.Testing && st.mode == TestMode.QUICK && st.trialOpen && autoQuick && opened.getAndIncrement() >= leaveOpen -> {
                 val heard = responder.respond(quickTrialOf(info, st.frequencyHz))
                 answeredQuick.incrementAndGet()
                 val delayMs = if (heard) heardMs else notHeardMs
                 if (delayMs == 0L || scope == null) {
-                    rig.session.respond(heard)
+                    sess().respond(heard)
                 } else {
                     scope.launch {
                         delay(delayMs)
-                        rig.session.respond(heard)
+                        sess().respond(heard)
                     }
                 }
             }
@@ -128,7 +136,7 @@ class Brain(
     private fun installThorough() {
         val sc = checkNotNull(scope) { "Thorough needs a scope for the run delay" }
         sc.launch {
-            rig.session.state.collect { st ->
+            sess().state.collect { st ->
                 if (st is SessionState.Testing && st.dial != null && !runBusy) {
                     runBusy = true
                     launch { handleRun(st) }
@@ -142,19 +150,19 @@ class Brain(
     private suspend fun handleRun(st: SessionState.Testing) {
         val dial = st.dial!!
         val before = rig.tone.played.size
-        while (rig.tone.played.size == before) delay(10)
+        while (rig.tone.played.size == before && sess().isActive) delay(10)
         val info = rig.tone.played.last().info()
         val level0 = info.levelDbfs
         val ear = info.ear ?: Ear.LEFT
         if (thoroughRunMs > 0) delay(thoroughRunMs)
         val target = listener.thoroughConfirmLevel(ear, st.frequencyHz)
         val desired = dial.position + (target - level0).roundToInt()
-        rig.session.dialTo(desired)
-        val now = (rig.session.state.value as? SessionState.Testing)?.dial
+        sess().dialTo(desired)
+        val now = (sess().state.value as? SessionState.Testing)?.dial
         if (now != null && ((desired > dial.maxPosition && now.atTop) || (desired < dial.minPosition && now.atBottom))) {
-            rig.session.dialLimit()
+            sess().dialLimit()
         } else {
-            rig.session.dialConfirm()
+            sess().dialConfirm()
         }
     }
 }
