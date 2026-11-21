@@ -9,6 +9,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -84,15 +85,31 @@ class PreferenceViewModelTest {
         /** Treble-heavy: differs clearly from pink so the DeltaL terms are non-trivial and per-curve. */
         val predictor = LoudnessPredictor(DoubleArray(ThirdOctaveBands.COUNT) { if (it < 14) 0.02 else 1.0 })
 
+        var failCreate = false
+        var failLoad = false
+        var loadDelayMs = 0L
+        var predictorDelayMs = 0L
+
         override fun createPlayer(): PrefAudio {
             bypassHeldAtCreate = bypass.openCount >= 1
-            val p = FakeAbPlayer().also { players += it }
+            if (failCreate) error("no player")
+            val inner = FakeAbPlayer().also { players += it }
+            val p = object : my.umarh.paudio.core.model.AbPlayer by inner {
+                override suspend fun load(src: AudioSource, loop: ClosedRange<kotlin.time.Duration>?) {
+                    if (loadDelayMs > 0) kotlinx.coroutines.delay(loadDelayMs)
+                    if (failLoad) error("bad file")
+                    inner.load(src, loop)
+                }
+            }
             return PrefAudio(p, playing = null, ticks = ticks)
         }
 
         override fun outputSampleRate() = FS
 
-        override suspend fun predictor(clip: DemoClip) = predictor
+        override suspend fun predictor(clip: DemoClip): LoudnessPredictor {
+            if (predictorDelayMs > 0) kotlinx.coroutines.delay(predictorDelayMs)
+            return predictor
+        }
     }
 
     private class Rig(val vm: PreferenceViewModel, val backend: FakeBackend, val bypass: FakeBypassController, val data: FakeData) {
@@ -487,5 +504,127 @@ class PreferenceViewModelTest {
         settle()
         assertThat(ok.ui.phase).isEqualTo(PrefPhase.INTRO)
         assertThat(ok.ui.hasHearingTest).isTrue()
+    }
+
+    // ---- review fixes --------------------------------------------------------------------------------------------
+
+    @Test
+    fun failedCreateOrLoad_releasesTheTokenAndRetryReacquires() = runTest(dispatcher) {
+        val r = rig()
+        settle()
+        r.backend.failCreate = true
+        r.vm.startAudio()
+        r.vm.begin()
+        settle()
+        assertThat(r.ui.audio).isEqualTo(AudioStatus.ERROR)
+        assertThat(r.bypass.openCount).isEqualTo(0)
+
+        r.backend.failCreate = false
+        r.backend.failLoad = true
+        r.vm.retryAudio()
+        settle()
+        assertThat(r.ui.audio).isEqualTo(AudioStatus.ERROR)
+        assertThat(r.bypass.openCount).isEqualTo(0)
+        assertThat(r.backend.player.released).isTrue()
+
+        r.backend.failLoad = false
+        r.vm.retryAudio()
+        settle()
+        assertThat(r.ui.audio).isEqualTo(AudioStatus.READY)
+        assertThat(r.bypass.openCount).isEqualTo(1)
+    }
+
+    @Test
+    fun doubleTapOnCantTellEndsOnlyOneAxis() = runTest(dispatcher) {
+        val r = started()
+        r.vm.cantTell(1)
+        r.vm.cantTell(1)
+        settle()
+        assertThat(r.ui.roundNumber).isEqualTo(2)
+        assertThat(r.ui.axis).isEqualTo(my.umarh.paudio.core.preference.PreferenceAxis.PRESENCE)
+        // Also without the round argument: two immediate calls would still be two different rounds, but a stale
+        // round-keyed choose is ignored.
+        openGate(r)
+        r.vm.choose(AbSide.A, 1)
+        assertThat(r.ui.roundNumber).isEqualTo(2)
+    }
+
+    @Test
+    fun staleTicksBetweenChooseAndTheNewPlanDoNotCount() = runTest(dispatcher) {
+        val r = started()
+        openGate(r)
+        r.backend.predictorDelayMs = 100
+        r.vm.choose(AbSide.A)
+        r.backend.ticks.tryEmit(ListenTick(AbSide.A, 5_000))
+        r.backend.ticks.tryEmit(ListenTick(AbSide.B, 5_000))
+        runCurrent() // collector runs while the new round's plan is still being prepared
+        assertThat(r.ui.roundNumber).isEqualTo(2)
+        assertThat(r.ui.aHeard).isFalse()
+        assertThat(r.ui.bHeard).isFalse()
+        settle()
+        r.backend.ticks.tryEmit(ListenTick(AbSide.A, 2_000))
+        settle()
+        assertThat(r.ui.aHeard).isTrue()
+    }
+
+    @Test
+    fun doubleSave_writesOnce() = runTest(dispatcher) {
+        val r = started()
+        play(r, "+++++++++")
+        r.vm.save()
+        r.vm.save()
+        settle()
+        r.vm.save()
+        settle()
+        assertThat(r.data.saves).hasSize(1)
+    }
+
+    @Test
+    fun noPlayerIsRecreatedAfterSave() = runTest(dispatcher) {
+        val r = started()
+        play(r, "+++++++++")
+        r.vm.openFineTune()
+        settle()
+        r.vm.save()
+        settle()
+        val n = r.backend.players.size
+        r.vm.stopAudio()
+        r.vm.startAudio()
+        settle()
+        assertThat(r.backend.players).hasSize(n)
+        assertThat(r.bypass.openCount).isEqualTo(0)
+    }
+
+    @Test
+    fun sliderDrags_areCoalescedIntoOneReplan() = runTest(dispatcher) {
+        val r = started()
+        play(r, "+++++++++")
+        r.vm.openFineTune()
+        settle()
+        val before = r.backend.player.swaps.size
+        for (v in listOf(1f, 2f, 3f, 4f, 5f)) {
+            r.vm.setBass(v)
+            advanceTimeBy(40)
+            runCurrent()
+        }
+        settle()
+        assertThat(r.backend.player.swaps.size - before).isEqualTo(1)
+        assertThat(r.ui.gB).isEqualTo(5f)
+    }
+
+    @Test
+    fun stopDuringAnInFlightLoad_leavesNoTokenOrHandle() = runTest(dispatcher) {
+        val r = rig()
+        settle()
+        r.backend.loadDelayMs = 1_000
+        r.vm.startAudio()
+        r.vm.begin()
+        runCurrent()
+        assertThat(r.bypass.openCount).isEqualTo(1) // load in flight
+        r.vm.stopAudio()
+        settle()
+        assertThat(r.bypass.openCount).isEqualTo(0)
+        assertThat(r.backend.player.released).isTrue()
+        assertThat(r.ui.audio).isEqualTo(AudioStatus.IDLE)
     }
 }

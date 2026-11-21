@@ -42,7 +42,7 @@ class PreferenceScreenTest {
 
     @Test
     fun chooseButtonsAreDisabledUntilTheGateOpens() {
-        setContent(PreferenceActions(onBack = {}, onChoose = { chosen += it }, onCantTell = { cantTell++ }))
+        setContent(PreferenceActions(onBack = {}, onChoose = { s, _ -> chosen += s }, onCantTell = { cantTell++ }))
         rule.onNodeWithTag(CHOOSE_A_TAG).assertIsNotEnabled()
         rule.onNodeWithTag(CHOOSE_B_TAG).assertIsNotEnabled()
         // "Can't tell" is always available.

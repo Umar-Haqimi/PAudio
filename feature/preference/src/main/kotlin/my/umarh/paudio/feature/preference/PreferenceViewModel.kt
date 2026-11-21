@@ -106,6 +106,9 @@ class PreferenceViewModel @Inject constructor(
     private var ticksJob: Job? = null
     private var audioWanted = false
 
+    /** False from the start of a round until its plan is swapped in: listen ticks of the old audio/side are dropped. */
+    private var roundApplied = false
+
     init {
         viewModelScope.launch { load() }
     }
@@ -148,6 +151,7 @@ class PreferenceViewModel @Inject constructor(
             return
         }
         gate.reset()
+        roundApplied = false
         _ui.update {
             it.copy(
                 phase = PrefPhase.ROUND,
@@ -164,16 +168,18 @@ class PreferenceViewModel @Inject constructor(
     }
 
     /** "Choose A" / "Choose B"; ignored until the gate has opened (A and B each played >= 2 s). */
-    fun choose(side: AbSide) {
+    fun choose(side: AbSide, roundNumber: Int = bisection.roundsCompleted + 1) {
         val r = bisection.currentRound ?: return
+        if (roundNumber != bisection.roundsCompleted + 1) return // stale tap (double tap) for an answered round
         if (_ui.value.phase != PrefPhase.ROUND || !gate.canChoose) return
         records += RoundRecord.of(r, side, _ui.value.clip.name)
         bisection.choose(side)
         beginRound()
     }
 
-    fun cantTell() {
+    fun cantTell(roundNumber: Int = bisection.roundsCompleted + 1) {
         val r = bisection.currentRound ?: return
+        if (roundNumber != bisection.roundsCompleted + 1) return // stale tap (double tap) for an answered round
         if (_ui.value.phase != PrefPhase.ROUND) return
         records += RoundRecord.of(r, null, _ui.value.clip.name)
         bisection.cantTell()
@@ -308,6 +314,7 @@ class PreferenceViewModel @Inject constructor(
         handle = null
         plan = null
         loadedClip = null
+        roundApplied = false
         if (h != null) {
             runCatching { h.player.pause() }
             runCatching { h.player.release() }
@@ -348,7 +355,7 @@ class PreferenceViewModel @Inject constructor(
     }
 
     private fun launchPrepare() {
-        if (!audioWanted) return
+        if (!audioWanted || _ui.value.saved) return
         val phase = _ui.value.phase
         if (phase != PrefPhase.ROUND && phase != PrefPhase.FINE_TUNE) return
         prepareJob?.cancel()
@@ -410,6 +417,8 @@ class PreferenceViewModel @Inject constructor(
         } catch (ce: CancellationException) {
             throw ce
         } catch (_: Throwable) {
+            // P0: a failed create/load must not leave the token or a half-loaded player behind; retry re-acquires.
+            releaseAudio()
             _ui.update { it.copy(audio = AudioStatus.ERROR, playing = false) }
         }
     }
@@ -422,6 +431,7 @@ class PreferenceViewModel @Inject constructor(
         if (st.phase == PrefPhase.ROUND) {
             val i = if (st.activeSide == AbSide.A) 0 else 1
             h.swap(p.configs[i], p.matchGainDb[i], st.activeSide)
+            roundApplied = true
         } else {
             val i = if (st.personalized) 1 else 0
             h.swap(p.configs[i], p.matchGainDb[i], null)
@@ -429,7 +439,7 @@ class PreferenceViewModel @Inject constructor(
     }
 
     private fun onTick(side: AbSide, deltaMs: Long) {
-        if (_ui.value.phase != PrefPhase.ROUND) return
+        if (_ui.value.phase != PrefPhase.ROUND || !roundApplied) return
         gate.onPlayed(side, deltaMs / 1000.0)
         val played = gate.playedSeconds
         _ui.update {

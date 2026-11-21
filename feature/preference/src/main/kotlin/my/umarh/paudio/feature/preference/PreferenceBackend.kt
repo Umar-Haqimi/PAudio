@@ -6,9 +6,11 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Inject
 import kotlin.random.Random
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import my.umarh.paudio.audio.playback.AbPlayerFactory
 import my.umarh.paudio.audio.playback.ListenTick
@@ -137,17 +139,22 @@ internal class AndroidPreferenceData @Inject constructor(
         roundsJson: String,
         settings: ProfileSettings,
     ) {
-        prefTests.save(
-            PreferenceTestEntity(
-                profileId = profileId,
-                startedAt = startedAt,
-                gB = test.first,
-                gP = test.second,
-                gT = test.third,
-                roundsJson = roundsJson,
-            ),
-        )
-        profiles.updateSettings(profileId, settings)
+        // Both writes finish even if the screen is left meanwhile (no transaction API in :data). personalizationOn is
+        // re-read so a toggle made while the test ran is not overwritten.
+        withContext(NonCancellable) {
+            val current = profiles.get(profileId)?.profile?.personalizationOn ?: settings.personalizationOn
+            prefTests.save(
+                PreferenceTestEntity(
+                    profileId = profileId,
+                    startedAt = startedAt,
+                    gB = test.first,
+                    gP = test.second,
+                    gT = test.third,
+                    roundsJson = roundsJson,
+                ),
+            )
+            profiles.updateSettings(profileId, settings.copy(personalizationOn = current))
+        }
     }
 
     override fun nowMs(): Long = System.currentTimeMillis()

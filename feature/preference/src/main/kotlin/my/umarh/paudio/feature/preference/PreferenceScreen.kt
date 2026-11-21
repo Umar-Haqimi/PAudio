@@ -99,8 +99,9 @@ internal const val EQ_GRAPH_TAG = "pref_eq_graph"
 internal class PreferenceActions(
     val onBack: () -> Unit,
     val onBegin: () -> Unit = {},
-    val onChoose: (AbSide) -> Unit = {},
-    val onCantTell: () -> Unit = {},
+    /** The round number is passed back so a stale double tap on an answered round is ignored. */
+    val onChoose: (AbSide, Int) -> Unit = { _, _ -> },
+    val onCantTell: (Int) -> Unit = {},
     val onListen: (AbSide) -> Unit = {},
     val onTogglePlay: () -> Unit = {},
     val onAnotherSong: () -> Unit = {},
@@ -129,8 +130,8 @@ internal fun PreferenceScreen(onBack: () -> Unit, viewModel: PreferenceViewModel
         actions = PreferenceActions(
             onBack = onBack,
             onBegin = viewModel::begin,
-            onChoose = viewModel::choose,
-            onCantTell = viewModel::cantTell,
+            onChoose = { side, n -> viewModel.choose(side, n) },
+            onCantTell = { n -> viewModel.cantTell(n) },
             onListen = viewModel::listen,
             onTogglePlay = viewModel::togglePlay,
             onAnotherSong = viewModel::tryAnotherSong,
@@ -307,18 +308,18 @@ private fun RoundCard(ui: PreferenceUiState, actions: PreferenceActions) {
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(
-                onClick = { actions.onChoose(AbSide.A) },
+                onClick = { actions.onChoose(AbSide.A, ui.roundNumber) },
                 enabled = ui.canChoose,
                 modifier = Modifier.weight(1f).heightIn(min = 56.dp).testTag(CHOOSE_A_TAG),
             ) { Text(stringResource(R.string.preference_choose_a)) }
             Button(
-                onClick = { actions.onChoose(AbSide.B) },
+                onClick = { actions.onChoose(AbSide.B, ui.roundNumber) },
                 enabled = ui.canChoose,
                 modifier = Modifier.weight(1f).heightIn(min = 56.dp).testTag(CHOOSE_B_TAG),
             ) { Text(stringResource(R.string.preference_choose_b)) }
         }
         OutlinedButton(
-            onClick = actions.onCantTell,
+            onClick = { actions.onCantTell(ui.roundNumber) },
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(CANT_TELL_TAG),
         ) { Text(stringResource(R.string.preference_cant_tell)) }
         TextButton(
@@ -457,7 +458,15 @@ private fun FineTuneCard(ui: PreferenceUiState, actions: PreferenceActions) {
             range = 0f..1f,
             onChange = actions.onStrength,
             tag = SLIDER_STRENGTH_TAG,
+            enabled = ui.hasHearingTest,
         )
+        if (!ui.hasHearingTest) {
+            Text(
+                stringResource(R.string.preference_strength_note_none),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         TuneSlider(
             label = stringResource(R.string.preference_slider_bass),
             valueText = stringResource(R.string.preference_gain_value, formatGain(ui.gB, locale)),
@@ -519,6 +528,7 @@ private fun TuneSlider(
     range: ClosedFloatingPointRange<Float>,
     onChange: (Float) -> Unit,
     tag: String,
+    enabled: Boolean = true,
 ) {
     Column {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -529,6 +539,7 @@ private fun TuneSlider(
             value = value.coerceIn(range),
             onValueChange = onChange,
             valueRange = range,
+            enabled = enabled,
             modifier = Modifier
                 .heightIn(min = 48.dp)
                 .testTag(tag)
