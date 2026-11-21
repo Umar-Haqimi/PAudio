@@ -64,12 +64,20 @@ class M12AuditTest {
         assertThat(svc).doesNotContain("FOREGROUND_SERVICE_MEDIA_PLAYBACK")
     }
 
-    /** Trap 10: the boot receiver handles only BOOT_COMPLETED and is not exported to other apps. */
+    /**
+     * Trap 10: the boot receiver's intent filter holds exactly one action, BOOT_COMPLETED. It must be
+     * exported (system broadcasts need that); BootReceiver re-checks the action at runtime.
+     */
     @Test
     fun bootReceiverOnlyHandlesBootCompleted() {
         val svc = text("service/src/main/AndroidManifest.xml")
-        assertThat(svc).contains("android.intent.action.BOOT_COMPLETED")
-        assertThat(svc).doesNotContain("QUICKBOOT")
+            .replace(Regex("""<!--.*?-->""", RegexOption.DOT_MATCHES_ALL), "")
+        val receiver = Regex("""<receiver\b[^>]*android:name="\.BootReceiver"[^>]*>(.*?)</receiver>""", RegexOption.DOT_MATCHES_ALL)
+            .find(svc)
+        assertThat(receiver).isNotNull()
+        val actions = Regex("""<action\s+android:name="([^"]+)"""").findAll(receiver!!.groupValues[1])
+            .map { it.groupValues[1] }.toList()
+        assertThat(actions).containsExactly("android.intent.action.BOOT_COMPLETED")
     }
 
     /** Trap 16: headsets are identified without the scary Bluetooth permission. */
