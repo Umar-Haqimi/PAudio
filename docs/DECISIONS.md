@@ -561,3 +561,10 @@ Other facts worth knowing:
 - **Crash guard.** `@ServiceScope` has a `CoroutineExceptionHandler` that logs the exception class only and raises `ServiceFaults`; the route pipeline retries with backoff (1 s .. 30 s) and the notification shows "PAudio hit a problem and is retrying…" meanwhile.
 - **Foreground-start failure.** `PAudioService` posts the "Tap to start PAudio" notification (unless the user turned it off or the action is STOP); STOP sets the off flag before entering the foreground.
 - **Other.** `fs` is read per route (a USB DAC with another rate: HARDWARE_TEST item: check `PROPERTY_OUTPUT_SAMPLE_RATE` vs the actual mixer rate per route); a profile or listener change on the same device also pushes `Route(dev, null, false)` first; channels are created once. The `<queries>` MAIN/LAUNCHER entry makes launcher apps visible to PAudio (needed only for app labels; mention in PRIVACY.md). The DataStore headsetKey -> profileId map is global across listeners (schema limitation); the resolver ignores entries pointing at another listener's profile.
+
+## 22. Core screens decisions (M8b)
+- **Feature ↔ engine seam:** features depend on `:service` but each declares a narrow interface over `EngineController` (e.g. `HomeEngine`, `SettingsEngine`) with a Hilt `@Binds` adapter; ViewModels never see the controller directly. Reason: plain-fake ViewModel tests; the controller is a concrete class with Android dependencies.
+- **Start destination:** `AppViewModel` reads `SettingsRepository.onboardingDone` once (Loading → Home/Onboarding) so the back stack never contains onboarding after it is done.
+- **Notification "Create profile" route** is ignored before onboarding is done (no listener exists yet).
+- **Empty-state CTA copy** is "≈ 7 min" (HANDOFF §3; Quick ≈ 6–8 min per §18), not the spec's "≈5 min".
+- **Retest / preference callbacks** carry the profile id, but `HearingTestRoute` / `PreferenceRoute` were still objects when M8b was written; the nav host adapts them at merge time.
