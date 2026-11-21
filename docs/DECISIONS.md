@@ -572,3 +572,10 @@ Other facts worth knowing:
 - **Exit dialog (F12):** top-bar back, system back and Done all open it when results are shown; "Fine-tune now" -> `onPreferenceTest(profileId)`, "Not now" -> `onDone()`, tapping outside keeps the user on Results. With no results (unavailable) back leaves directly.
 - **Seed colour (F25):** when the opened test is the profile's latest and `seedOverridden` is false, `ProfileSeedColor.from(display HL L/R)` is written with `ProfileRepository.setSeedColor(id, argb, overridden = false)`. Best effort (failures ignored).
 - **Spec note:** SPEC F9/F10 say the A/B uses "Discipline"; only Discipline is offered here (`DemoClip.DISCIPLINE`); the other clips are for the preference test (M11). Number reused: if the parallel M9a agent also appended a "20", the orchestrator should renumber one.
+
+## 22. Core screens decisions (M8b)
+- **Feature ↔ engine seam:** features depend on `:service` but each declares a narrow interface over `EngineController` (e.g. `HomeEngine`, `SettingsEngine`) with a Hilt `@Binds` adapter; ViewModels never see the controller directly. Reason: plain-fake ViewModel tests; the controller is a concrete class with Android dependencies.
+- **Start destination:** `AppViewModel` reads `SettingsRepository.onboardingDone` once (Loading → Home/Onboarding) so the back stack never contains onboarding after it is done.
+- **Notification "Create profile" route** is ignored before onboarding is done (no listener exists yet).
+- **Empty-state CTA copy** is "≈ 7 min" (HANDOFF §3; Quick ≈ 6–8 min per §18), not the spec's "≈5 min".
+- **Retest / preference callbacks** carry the profile id, but `HearingTestRoute` / `PreferenceRoute` were still objects when M8b was written; the nav host adapts them at merge time.
