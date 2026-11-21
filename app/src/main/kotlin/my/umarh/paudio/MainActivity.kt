@@ -10,8 +10,6 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
-import my.umarh.paudio.designsystem.PAudioTheme
-import my.umarh.paudio.navigation.PAudioNavHost
 import my.umarh.paudio.service.LaunchRequests
 import my.umarh.paudio.service.ServiceIntents
 import my.umarh.paudio.service.engine.EngineController
@@ -31,10 +29,7 @@ class MainActivity : ComponentActivity() {
         val replay = savedInstanceState != null || (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
         if (!replay) handleLaunch(intent)
         setContent {
-            // TODO(M8): pass the active profile's seed colour.
-            PAudioTheme {
-                PAudioNavHost()
-            }
+            AppRoot()
         }
         // Foreground: starting the FGS is allowed here (boot fallback and normal app starts).
         lifecycleScope.launch {
@@ -51,7 +46,7 @@ class MainActivity : ComponentActivity() {
         handleLaunch(intent)
     }
 
-    /** Notification deep links: "Tap to start PAudio" starts the engine; other routes are left for the nav (M8b). */
+    /** Notification deep links: "Tap to start PAudio" starts the engine; other routes are handled by `AppRoot` / `PAudioNavHost`. */
     private fun handleLaunch(intent: Intent?) {
         val route = launchRequests.offer(intent)
         // One-shot: drop the extra so a later recreation cannot replay it.

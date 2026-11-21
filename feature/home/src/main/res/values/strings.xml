@@ -1,9 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="feature_home_title">Home</string>
+    <string name="feature_home_title">PAudio</string>
     <string name="home_action_hearing_test">Hearing test</string>
     <string name="home_action_preference_test">Preference test</string>
     <string name="home_action_health">Hearing health</string>
     <string name="home_action_profiles">Profiles</string>
     <string name="home_action_settings">Settings</string>
+    <string name="home_actions_title">Explore</string>
+
+    <!-- Empty state -->
+    <string name="home_empty_cta">Take your hearing test (≈ 7 min)</string>
+    <string name="home_empty_body">A short listening test lets PAudio shape your music to each of your ears. Find a quiet place and have your earphones on.</string>
+
+    <!-- Active profile card -->
+    <string name="home_profile_card_title">Active profile</string>
+    <string name="home_profile_listener">Listener: %1$s</string>
+    <string name="home_headset_any">Any headphones</string>
+    <string name="home_butterfly_description">Estimated hearing shape of %1$s. A wider wing means a lower estimated level at that pitch.</string>
+    <string name="home_butterfly_missing">The latest test is incomplete. Retest to see your hearing shape.</string>
+
+    <!-- Personalization -->
+    <string name="home_personalization_title">Sound</string>
+    <string name="home_personalization_unavailable">Connect earphones with a profile to switch between Personalized and Original.</string>
+    <string name="home_strength_title">Compensation strength</string>
+    <string name="home_strength_value">%1$s</string>
+    <string name="home_strength_description">Compensation strength</string>
+
+    <!-- Engine status -->
+    <string name="home_status_title">System-wide sound</string>
+    <string name="home_status_tap_to_retry">Tap to try again</string>
+    <string name="home_status_retry_action">Try again</string>
+    <string name="home_status_fault">PAudio hit a problem and is retrying…</string>
+    <string name="home_no_profile_action">Create profile for this headset</string>
+
+    <!-- Service off -->
+    <string name="home_off_title">PAudio is off</string>
+    <string name="home_off_body">Your music is playing without PAudio. Turn it on to apply your profile to your music apps.</string>
+    <string name="home_off_turn_on">Turn on</string>
+
+    <!-- Notification banner -->
+    <string name="home_notifications_blocked">PAudio needs its notification to keep working in the background.</string>
+    <string name="home_notifications_open_settings">Notification settings</string>
 </resources>

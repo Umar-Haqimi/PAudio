@@ -2,4 +2,123 @@
 <resources>
     <string name="feature_profiles_title">Profiles</string>
     <string name="profiles_back">Back</string>
+    <string name="profiles_cancel">Cancel</string>
+    <string name="profiles_save">Save</string>
+    <string name="profiles_create">Create</string>
+    <string name="profiles_name_label">Name</string>
+    <string name="profiles_any">Any headphones</string>
+
+    <!-- List -->
+    <string name="profiles_current_title">Current output</string>
+    <string name="profiles_current_ready">Connected: %1$s</string>
+    <string name="profiles_current_none">No earphones are connected right now.</string>
+    <string name="profiles_current_speaker">The speaker can\'t be personalized. Connect earphones to create a profile for them.</string>
+    <string name="profiles_create_for_headset">Create profile for this headset</string>
+    <string name="profiles_add_listener">Add listener</string>
+    <string name="profiles_import">Import profile</string>
+    <string name="profiles_importing">Importing…</string>
+    <string name="profiles_listener_active">Active</string>
+    <string name="profiles_listener_use">Use this listener</string>
+    <string name="profiles_listener_rename">Rename %1$s</string>
+    <string name="profiles_listener_group">Listener %1$s</string>
+    <string name="profiles_add_any">Add an \"Any headphones\" profile</string>
+    <string name="profiles_empty">No profiles yet. Connect earphones and create one, or import a profile file.</string>
+    <string name="profiles_open_profile">Open %1$s</string>
+    <string name="profiles_message_dismiss">Dismiss</string>
+
+    <!-- Dialogs: list -->
+    <string name="profiles_dialog_new_listener">Add a listener</string>
+    <string name="profiles_dialog_rename_listener">Rename listener</string>
+    <string name="profiles_dialog_create_title">New profile for this headset</string>
+    <string name="profiles_dialog_listener_label">For listener</string>
+
+    <!-- Messages -->
+    <string name="profiles_message_imported">Imported \"%1$s\".</string>
+    <string name="profiles_message_imported_replaced">Imported \"%1$s\" and replaced the existing profile.</string>
+    <string name="profiles_message_profile_exists">There is already a profile for this headset and listener.</string>
+    <string name="profiles_message_listener_exists">A listener with this name already exists.</string>
+    <string name="profiles_message_failed">Something went wrong. Please try again.</string>
+    <string name="profiles_import_error_too_large">This file is larger than 2 MB, which is more than a PAudio profile needs.</string>
+    <string name="profiles_import_error_not_utf8">This file is not a text file in a supported encoding.</string>
+    <string name="profiles_import_error_malformed">This file is not a valid PAudio profile.</string>
+    <string name="profiles_import_error_too_deep">This file is structured in a way PAudio does not support.</string>
+    <string name="profiles_import_error_version">This profile was made by a newer version of PAudio. Update the app to import it.</string>
+    <string name="profiles_import_error_value">This file contains values outside the allowed ranges.</string>
+    <string name="profiles_import_error_too_many_tests">This file holds more tests than PAudio can import (limit 100).</string>
+    <string name="profiles_import_error_too_many_trials">This file holds more test responses than PAudio can import.</string>
+    <string name="profiles_import_error_storage">The profile could not be saved on this device.</string>
+    <string name="profiles_import_error_io">The file could not be read.</string>
+
+    <!-- Import conflict -->
+    <string name="profiles_conflict_title">A profile already exists</string>
+    <string name="profiles_conflict_body">\"%1$s\" already uses this headset for this listener. What would you like to do?</string>
+    <string name="profiles_conflict_body_any">\"%1$s\" already uses \"Any headphones\" for this listener. What would you like to do?</string>
+    <string name="profiles_conflict_replace">Replace it</string>
+    <string name="profiles_conflict_as_any">Import as \"Any headphones\"</string>
+    <string name="profiles_conflict_replace_any">Replace the \"Any headphones\" profile</string>
+
+    <!-- Detail -->
+    <string name="profile_detail_title">Profile</string>
+    <string name="profile_detail_not_found">This profile no longer exists.</string>
+    <string name="profile_detail_listener">Listener: %1$s</string>
+    <string name="profile_detail_butterfly_description">Estimated hearing shape from your latest test. A wider wing means a lower estimated level at that pitch.</string>
+    <string name="profile_detail_no_test">No hearing test yet. Take one to personalize this profile.</string>
+    <string name="profile_detail_incomplete">The latest test is incomplete. Retest to see your hearing shape.</string>
+    <string name="profile_action_health">Hearing health</string>
+    <string name="profile_action_retest">Retest</string>
+    <string name="profile_action_first_test">Take hearing test</string>
+    <string name="profile_action_preference">Preference test</string>
+    <string name="profile_history_title">Test history</string>
+    <plurals name="profile_history_count">
+        <item quantity="one">%d test</item>
+        <item quantity="other">%d tests</item>
+    </plurals>
+    <string name="profile_history_none">No tests yet.</string>
+    <string name="profile_history_row">%1$s · %2$s</string>
+    <string name="profile_mode_quick">Quick</string>
+    <string name="profile_mode_thorough">Thorough</string>
+    <string name="profile_test_reliable">Answers looked consistent</string>
+    <string name="profile_test_unreliable">Some answers looked like guesses</string>
+
+    <string name="profile_manage_title">Manage</string>
+    <string name="profile_rename">Rename</string>
+    <string name="profile_duplicate">Duplicate</string>
+    <string name="profile_move">Move to another headset</string>
+    <string name="profile_export">Export to file</string>
+    <string name="profile_delete">Delete</string>
+
+    <string name="profile_color_title">App color</string>
+    <string name="profile_color_body">The app takes its color from this profile. By default it is derived from your latest test.</string>
+    <string name="profile_color_selected">Selected</string>
+    <string name="profile_color_reset">Use the color from my test</string>
+    <string name="profile_color_blue">Blue</string>
+    <string name="profile_color_teal">Teal</string>
+    <string name="profile_color_green">Green</string>
+    <string name="profile_color_amber">Amber</string>
+    <string name="profile_color_orange">Orange</string>
+    <string name="profile_color_red">Red</string>
+    <string name="profile_color_pink">Pink</string>
+    <string name="profile_color_purple">Purple</string>
+
+    <!-- Detail dialogs -->
+    <string name="profile_dialog_rename">Rename profile</string>
+    <string name="profile_dialog_duplicate">Duplicate profile</string>
+    <string name="profile_dialog_duplicate_body">A copy needs its own headset slot. Choose where it should apply.</string>
+    <string name="profile_dialog_move">Move profile</string>
+    <string name="profile_dialog_move_body">Choose the headset this profile should apply to.</string>
+    <string name="profile_dialog_no_slots">Every headset PAudio knows already has a profile for this listener. Connect other earphones and create a profile for them first, or use \"Any headphones\" once it is free.</string>
+    <string name="profile_dialog_copy_suffix">%1$s (copy)</string>
+    <string name="profile_dialog_delete_title">Delete \"%1$s\"?</string>
+    <string name="profile_dialog_delete_body">This removes the profile and all of its tests from this device. Files you exported are not affected.</string>
+    <string name="profile_dialog_retest_title">Retest on this headset?</string>
+    <string name="profile_dialog_retest_body">Earphones change how the test tones sound. A new test on this headset keeps your profile accurate.</string>
+    <string name="profile_dialog_retest_now">Retest now</string>
+    <string name="profile_dialog_retest_later">Later</string>
+
+    <!-- Detail messages -->
+    <string name="profile_message_slot_taken">That headset already has a profile for this listener.</string>
+    <string name="profile_message_failed">Something went wrong. Please try again.</string>
+    <string name="profile_message_exported">Profile exported.</string>
+    <string name="profile_message_export_failed">The profile could not be exported.</string>
+    <string name="profile_export_filename">paudio-profile.json</string>
 </resources>

@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">PAudio</string>
+
+    <!-- "Which headphones are these?" (SPEC 5.5) -->
+    <string name="which_headphones_title">Which headphones are these?</string>
+    <string name="which_headphones_body">More than one profile uses this wired connection. Choose the one that matches the headphones you plugged in. PAudio remembers your choice until you unplug them.</string>
+    <string name="which_headphones_candidate">%1$s (%2$s)</string>
+    <string name="which_headphones_not_now">Not now</string>
 </resources>
