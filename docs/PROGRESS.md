@@ -208,3 +208,20 @@ Pending reviews: Opus re-verify of M7a P0 fixes; Sonnet review of M10. See `docs
 - **Accessibility:** `A11yAudit` helper + `*A11yTest` in onboarding, home, profiles, settings, results and health (every clickable labelled, >= 48 dp, both themes). Fixed 40 dp back buttons on Results and Health and a 2.6:1 check mark on the amber profile swatch.
 - **Performance:** `EqGraph` moved to `drawWithCache` (labels and geometry cached; curves per frame). `HearingButterfly` already cached.
 - **Not done / device-only:** launch and full flow of the release APK, logcat grep, TalkBack timing around stimuli, jank measurement (added to HARDWARE_TEST section 10). Findings in `:feature:preference` (40 dp back button) and `:feature:hearingtest` (no behavioural test for trap 20) are left for their owners (DECISIONS 26.6).
+
+## Session 2 wrap-up (orchestrator)
+- Merged this session:
+  - M7a P0 race fixes (Opus re-verified)
+  - M7c service, with Opus review fixes
+  - M10 review fixes
+  - M9b Results
+  - M8b core screens, plus the M8b/M9b review fixes
+  - M11 preference, plus its 9 review fixes
+  - M9a hearing-test flow
+  - M13 docs
+  - M12 hardening
+- **Not fixed:** the Opus review of M9a requested changes: 3 MUST-FIX plus 1 likely, 8 SHOULD-FIX. They are listed in
+  full in `docs/HANDOFF.md` §1.2 and are the first thing to do next.
+- M12 has had no independent review. Its trap 20 gap needs a behavioural test in `:feature:hearingtest`.
+- Whole-project `./gradlew check assembleDebug` passed on M12's branch; on the merged tip, `:app:assembleDebug`,
+  `:app:verifyPermissions`, `verifyNoSensitiveLogging` and `:testing:test` pass.

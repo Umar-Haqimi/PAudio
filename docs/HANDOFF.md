@@ -28,11 +28,11 @@ real phone (`docs/HARDWARE_TEST.md`), and polish.
 | M9b Results | `:feature:results` | ✅ merged (+ review fixes) | Sonnet → Sonnet |
 | M10 Hearing health | `:feature:health` | ✅ merged (+ review fixes) | Sonnet → Sonnet |
 | M11 Preference test + fine-tune | `:feature:preference` | ✅ merged (+ all 9 review fixes, §24) | Sonnet → Sonnet |
-| M12 Hardening | all | <!-- M12-STATE --> | Sonnet → (no review yet) |
+| M12 Hardening | all | ✅ merged (DECISIONS §26); **no Opus review yet** | Sonnet → (none) |
 | M13 Docs | README, LICENSE (GPL-3.0), PRIVACY, HARDWARE_TEST, PLAYER_COMPAT, VECTORS | ✅ merged | Sonnet → orchestrator |
 
 ### 1.1 State at handoff
-No agents are running. <!-- TIP --> The debug APK builds (`./gradlew :app:assembleDebug`); the module checks of
+No agents are running. The whole-project `./gradlew check assembleDebug` passed on M12's branch and the debug APK builds (`./gradlew :app:assembleDebug`); the module checks of
 every merged module passed on the merged tree; `verifyFeatureBoundaries` (run alone) passes.
 
 **The current debug APK** has the full flow: onboarding → Home (status chip, Personalized/Original, strength) →
@@ -168,13 +168,26 @@ confirmed by the reviewer with throwaway probe tests (not committed).
   `HealthRoute(profileId?, testId?)`, `ProfilesRoute(createForCurrent)`, `ProfileDetailRoute(id)`.
 - **Gradle guards**: `verifyPermissions` (deny + allow list on the merged release manifest),
   `verifyFeatureBoundaries` (Expressive/MaterialShapes APIs only in `:designsystem`; **run it alone**),
-  `verifyPureKotlin` for `:core:*`. <!-- M12-GUARDS -->
+  `verifyPureKotlin` for `:core:*`, and (M12) `verifyNoSensitiveLogging`, wired into `check`.
+  - `verifyNoSensitiveLogging` scans `src/main` for log/print calls that carry hearing data, names, addresses or
+    throwable messages.
+- **Release build** (M12):
+  - `:app:assembleRelease` runs R8 with resource shrinking; the keep rules are in `app/proguard-rules.pro`
+    (serialization, Room, Hilt).
+  - The APK is unsigned unless `-Ppaudio.signReleaseWithDebugKey=true` or `PAUDIO_SIGN_RELEASE_WITH_DEBUG_KEY=1` is
+    set.
 - **License**: GPL-3.0-or-later (SPEC §10); NIN demo clips are CC BY-NC-SA 3.0 US → never monetize while they ship.
 
 ## 3. Remaining work (in order)
 
 1. Fix the M9a Opus findings in §1.2 (MUST-FIX first), then re-run `:feature:hearingtest:check`.
-<!-- M12-REMAINING -->
+   Then give M12 its Opus review: trap table (DECISIONS §26.3, 18 pinned / 1 device-only (13) / 1 gap (20)), keep
+   rules, the logging guard.
+   - **Trap 20 gap:** add a behavioural test in `:feature:hearingtest` that haptics and announcements fire only
+     after the stimulus is silent. Do it together with M9a MUST-FIX 4.
+   - **Also:** the preference top-bar back button is 40 dp (`PreferenceScreen.kt` ~165); make it 48 dp, as
+     Results/Health now are.
+   - **Also:** `:feature:hearingtest` has no a11y Compose test yet (pattern: `A11yAudit` in the other features).
 2. Run the whole `docs/HARDWARE_TEST.md` checklist on a phone; fill `docs/PLAYER_COMPAT.md`.
 3. Diff `LICENSE` against the canonical GPL-3.0 text.
 4. Clear the nits in §1.3 as time allows.
