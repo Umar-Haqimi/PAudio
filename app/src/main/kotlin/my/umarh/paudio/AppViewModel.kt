@@ -5,12 +5,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import android.util.Log
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -81,7 +84,18 @@ class AppViewModel @Inject constructor(
         viewModelScope.launch {
             _start.value = if (settings.onboardingDone.first()) AppStart.Home else AppStart.Onboarding
         }
-        viewModelScope.launch { seedSync().collect { (id, seed) -> profiles.setSeedColor(id, seed, false) } }
+        viewModelScope.launch {
+            seedSync().collect { (id, seed) ->
+                // A failed write must not end the collector (it is the only app-level seed writer); no personal data logged.
+                try {
+                    profiles.setSeedColor(id, seed, false)
+                } catch (ce: CancellationException) {
+                    throw ce
+                } catch (t: Throwable) {
+                    Log.w(TAG, "seed colour sync failed: ${t.javaClass.simpleName}")
+                }
+            }
+        }
     }
 
     fun consumeLaunchRoute() = launchRequests.consume()
@@ -106,9 +120,11 @@ class AppViewModel @Inject constructor(
                 .map { derived -> derived?.takeIf { it != p.seedColor }?.let { p.id to it } }
                 .filterNotNull()
         }
-    }
+    }.catch { t -> Log.w(TAG, "seed colour observe failed: ${t.javaClass.simpleName}") }
 
     private companion object {
+        const val TAG = "AppViewModel"
+
         fun pickThemeProfile(active: ActiveProfile, listenerId: Long?, groups: List<ListenerProfiles>): ProfileEntity? {
             if (active is ActiveProfile.Resolved) return active.profile
             val group = groups.firstOrNull { it.listener.id == listenerId } ?: groups.firstOrNull() ?: return null

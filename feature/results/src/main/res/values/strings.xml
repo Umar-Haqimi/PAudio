@@ -45,6 +45,9 @@
     <string name="results_beyond_range_left">Some high pitches in your left ear were beyond the test range: you did not hear them at the loudest level PAudio allows, so the real value may be higher. That does not mean there is no hearing at those pitches.</string>
     <string name="results_beyond_range_right">Some high pitches in your right ear were beyond the test range: you did not hear them at the loudest level PAudio allows, so the real value may be higher. That does not mean there is no hearing at those pitches.</string>
     <string name="results_beyond_range_both">Some high pitches in both ears were beyond the test range: you did not hear them at the loudest level PAudio allows, so the real value may be higher. That does not mean there is no hearing at those pitches.</string>
+    <string name="results_beyond_range_any_left">Some pitches in your left ear were beyond the test range: you did not hear them at the loudest level PAudio allows, so the real value may be higher. That does not mean there is no hearing at those pitches.</string>
+    <string name="results_beyond_range_any_right">Some pitches in your right ear were beyond the test range: you did not hear them at the loudest level PAudio allows, so the real value may be higher. That does not mean there is no hearing at those pitches.</string>
+    <string name="results_beyond_range_any_both">Some pitches in both ears were beyond the test range: you did not hear them at the loudest level PAudio allows, so the real value may be higher. That does not mean there is no hearing at those pitches.</string>
 
     <!-- A/B -->
     <string name="results_ab_title">Hear the difference</string>

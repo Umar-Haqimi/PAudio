@@ -10,6 +10,7 @@ import my.umarh.paudio.core.model.FrequencyGrid
 import my.umarh.paudio.core.model.TestMode
 import my.umarh.paudio.data.db.HearingTestEntity
 import my.umarh.paudio.data.db.ThresholdEntity
+import my.umarh.paudio.data.db.measure
 import my.umarh.paudio.designsystem.chart.AudiogramPoint
 import my.umarh.paudio.designsystem.chart.TrendPoint
 
@@ -67,20 +68,7 @@ sealed interface HealthUiState {
 /** Pure mapping from stored raw thresholds to UI pieces. Derived values are recomputed every time, never stored. */
 object HealthMapper {
     /** Returns null when the stored thresholds are incomplete (every grid point of both ears is required). */
-    fun measure(thresholds: List<ThresholdEntity>): MeasurementResult? {
-        val byEar = Ear.entries.associateWith { ear ->
-            thresholds.filter { it.ear == ear && it.levelDbfs != null }.associateBy { it.freqHz }
-        }
-        val complete = byEar.values.all { pts -> FrequencyGrid.TEST_FREQUENCIES_HZ.all { it in pts } }
-        if (!complete) return null
-        val points = byEar.mapValues { (_, pts) ->
-            FrequencyGrid.TEST_FREQUENCIES_HZ.map { f ->
-                val t = pts.getValue(f)
-                ThresholdPoint(f, t.levelDbfs!!.toDouble(), t.censored)
-            }
-        }
-        return MeasurementModel.compute(points)
-    }
+    fun measure(thresholds: List<ThresholdEntity>): MeasurementResult? = thresholds.measure()
 
     fun audiogramPoints(result: MeasurementResult, thresholds: List<ThresholdEntity>, ear: Ear): List<AudiogramPoint> {
         val lowConf = thresholds.filter { it.ear == ear && it.lowConfidence }.map { it.freqHz }.toSet()

@@ -120,4 +120,14 @@ class ResultsMapperTest {
         assertThat(formatDb(3.0, en)).isEqualTo("3")
         assertThat(formatDb(12.5, java.util.Locale.GERMANY)).isEqualTo("12,5")
     }
+
+    @Test
+    fun beyondRangeWording_isHighOnlyWhenEveryCensoredPointIsAtOrAbove10kHz() {
+        val high = ResultsMapper.content(test(1), thresholds(1, censoredAt = setOf(Ear.LEFT to 12500, Ear.RIGHT to 14000)))!!
+        assertThat(high.beyondRangeOnlyHigh).isTrue()
+        val low = ResultsMapper.content(test(1), thresholds(1, censoredAt = setOf(Ear.LEFT to 8000)))!!
+        assertThat(low.beyondRangeOnlyHigh).isFalse()
+        val mixed = ResultsMapper.content(test(1), thresholds(1, censoredAt = setOf(Ear.LEFT to 8000, Ear.RIGHT to 14000)))!!
+        assertThat(mixed.beyondRangeOnlyHigh).isFalse()
+    }
 }
