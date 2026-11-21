@@ -2,4 +2,54 @@
 <resources>
     <string name="feature_settings_title">Settings</string>
     <string name="settings_back">Back</string>
+
+    <!-- Service -->
+    <string name="settings_service_title">System-wide sound</string>
+    <string name="settings_service_switch">PAudio is on</string>
+    <string name="settings_service_on_body">PAudio is running in the background and can apply your profile to your music apps.</string>
+    <string name="settings_service_off_body">PAudio is off. Your music plays without it. Turn it on to apply your profile.</string>
+
+    <!-- Mode -->
+    <string name="settings_mode_title">How PAudio finds your music</string>
+    <string name="settings_mode_intro">Choose one way. The two modes are never active at the same time, because that would equalize your music twice.</string>
+    <string name="settings_mode_session">Per app (recommended)</string>
+    <string name="settings_mode_session_body">PAudio attaches to each music app that announces its audio. It does not touch other sounds. Some apps do not announce themselves.</string>
+    <string name="settings_mode_legacy">Legacy (whole device)</string>
+    <string name="settings_mode_legacy_body">Processes the global audio mix. This approach is deprecated by Android and only works on some devices. Try it if PAudio says your device\'s audio system refused its effect, or your music app is not announcing itself.</string>
+    <string name="settings_mode_selected">Selected</string>
+
+    <!-- Boot -->
+    <string name="settings_boot_title">Start on boot</string>
+    <string name="settings_boot_switch">Start PAudio after the phone restarts</string>
+    <string name="settings_boot_body">Off by default. On Android 15 and later the system may not let PAudio start by itself after a restart. In that case PAudio shows a notification, \"Tap to start PAudio\", and starts when you tap it.</string>
+
+    <!-- Compensation default -->
+    <string name="settings_strength_title">Default compensation strength</string>
+    <string name="settings_strength_body">Used for new profiles. Existing profiles keep their own strength; change it on Home.</string>
+    <string name="settings_strength_value">%1$s</string>
+    <string name="settings_strength_description">Default compensation strength</string>
+
+    <!-- About entry -->
+    <string name="settings_about_row">About, licenses and disclaimer</string>
+
+    <!-- About -->
+    <string name="about_title">About PAudio</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_tagline">Personalized earphone sound, tuned to your hearing and your taste.</string>
+    <string name="about_disclaimer_title">Not a medical device</string>
+    <string name="about_disclaimer_text">PAudio is not a medical device. These results are estimates for music listening only and are not a medical diagnosis. Phones and earphones can\'t be calibrated like clinical equipment, so hearing loss that is equal across all frequencies can\'t be detected. If you notice changes in your hearing, ringing, or pain, see a doctor or audiologist.</string>
+
+    <string name="about_attributions_title">Attributions</string>
+    <string name="about_attr_nin_title">Demo music</string>
+    <string name="about_attr_nin_body">Nine Inch Nails: \"Discipline\" and \"Echoplex\" from The Slip (2008), and \"34 Ghosts IV\" from Ghosts I–IV (2008). Licensed under Creative Commons Attribution-NonCommercial-ShareAlike 3.0 United States (CC BY-NC-SA 3.0 US). The clips were trimmed, loudness-normalized and resampled.</string>
+    <string name="about_attr_nin_note">Because of this NonCommercial license, PAudio is free and must never be sold or monetized: no price, no ads and no in-app purchases.</string>
+    <string name="about_attr_font_title">Roboto Flex</string>
+    <string name="about_attr_font_body">Typeface by the Roboto Flex Project Authors, licensed under the SIL Open Font License 1.1 (OFL-1.1).</string>
+    <string name="about_attr_icons_title">Material Symbols</string>
+    <string name="about_attr_icons_body">Icons by Google, licensed under the Apache License 2.0.</string>
+
+    <string name="about_licenses_title">Open-source libraries</string>
+    <string name="about_licenses_intro">PAudio is built with these open-source libraries.</string>
+    <string name="about_license_apache">Apache License 2.0</string>
+    <string name="about_license_mit">MIT License</string>
 </resources>

@@ -1,5 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="feature_onboarding_title">Welcome to PAudio</string>
-    <string name="onboarding_continue">Get started</string>
+    <string name="onboarding_continue">Continue</string>
+    <string name="onboarding_back">Back</string>
+    <string name="onboarding_step_counter">Step %1$d of %2$d</string>
+
+    <!-- Welcome -->
+    <string name="onboarding_welcome_headline">Your music, tuned to your ears</string>
+    <string name="onboarding_welcome_body">PAudio estimates how each of your ears hears through your own earphones, learns what sounds good to you, and shapes the sound of your music apps to match.</string>
+    <string name="onboarding_get_started">Get started</string>
+
+    <!-- How it works -->
+    <string name="onboarding_how_title">How it works</string>
+    <string name="onboarding_how_1_title">1. Listen and respond</string>
+    <string name="onboarding_how_1_body">A short test plays quiet tones in each ear. You tap when you hear them. It takes about 7 minutes.</string>
+    <string name="onboarding_how_2_title">2. Pick what sounds better</string>
+    <string name="onboarding_how_2_body">Compare a few pairs of sound and choose your favorite to fine-tune bass, presence and treble to your taste.</string>
+    <string name="onboarding_how_3_title">3. Enjoy it everywhere</string>
+    <string name="onboarding_how_3_body">PAudio runs in the background and applies your personal sound to your music apps. It switches by itself when you change earphones.</string>
+
+    <!-- Disclaimer (normative wording, SPEC section 4 item 4) -->
+    <string name="onboarding_disclaimer_title">Before you start</string>
+    <string name="onboarding_disclaimer_text">PAudio is not a medical device. These results are estimates for music listening only and are not a medical diagnosis. Phones and earphones can\'t be calibrated like clinical equipment, so hearing loss that is equal across all frequencies can\'t be detected. If you notice changes in your hearing, ringing, or pain, see a doctor or audiologist.</string>
+    <string name="onboarding_disclaimer_ack">I understand</string>
+
+    <!-- Notifications -->
+    <string name="onboarding_notifications_title">Keep PAudio running</string>
+    <string name="onboarding_notifications_body">PAudio shows a small notification while it is working in the background. It also lets you switch between Personalized and Original, or turn PAudio off, without opening the app.</string>
+    <string name="onboarding_notifications_allow">Allow notifications</string>
+    <string name="onboarding_notifications_denied">PAudio needs its notification to keep working in the background.</string>
+
+    <!-- Listener -->
+    <string name="onboarding_listener_title">Who is listening?</string>
+    <string name="onboarding_listener_body">Results are stored per listener. You can add more people later in Profiles.</string>
+    <string name="onboarding_listener_label">Name</string>
+    <string name="onboarding_listener_default">Me</string>
+    <string name="onboarding_finish">Finish setup</string>
+    <string name="onboarding_saving">Setting up…</string>
+    <string name="onboarding_error">Something went wrong while setting up. Please try again.</string>
 </resources>

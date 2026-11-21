@@ -1,2 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- SPEC §6 allow-list (enforced on the merged release manifest by :app:verifyPermissions). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- Package visibility (no permission): lets the notification show the app label of launcher apps
+         that announce an audio session. Apps that are not visible fall back to their package name. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <application>
+        <service
+            android:name=".PAudioService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="system-wide audio equalizer: attaches per-ear DynamicsProcessing effects to other apps' audio sessions" />
+        </service>
+
+        <!-- System broadcast only (BOOT_COMPLETED; no LOCKED_BOOT_COMPLETED: DataStore is credential-encrypted). -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Notification actions that need no UI. Explicit, immutable PendingIntents only. -->
+        <receiver
+            android:name=".NotificationActionReceiver"
+            android:exported="false" />
+    </application>
+</manifest>

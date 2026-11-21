@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Channels -->
+    <string name="service_channel_engine_name">PAudio engine</string>
+    <string name="service_channel_engine_description">Shows whether PAudio is processing your audio.</string>
+    <string name="service_channel_boot_name">Start on boot</string>
+    <string name="service_channel_boot_description">Appears when PAudio could not start by itself after a restart.</string>
+    <string name="service_channel_headset_name">New headphones</string>
+    <string name="service_channel_headset_description">Asks which profile to use for headphones PAudio has not seen before.</string>
+
+    <!-- Persistent notification (F21/F22) -->
+    <string name="service_notification_title">PAudio</string>
+    <string name="service_notification_title_personalized">PAudio · Personalized</string>
+    <string name="service_notification_title_original">PAudio · Original</string>
+    <string name="service_action_to_original">Original</string>
+    <string name="service_action_to_personalized">Personalized</string>
+    <string name="service_action_open_app">Open app</string>
+    <string name="service_action_turn_off">Turn off</string>
+
+    <!-- Engine status text (F21), shared by the notification and the Home status chip -->
+    <string name="service_status_off">PAudio is off</string>
+    <string name="service_status_starting">Starting…</string>
+    <string name="service_status_waiting">Waiting for a player</string>
+    <string name="service_status_active">Active in %1$s</string>
+    <string name="service_status_active_more">Active in %1$s and %2$d more</string>
+    <string name="service_status_legacy_active">Legacy mode · Personalized</string>
+    <string name="service_status_legacy_original">Legacy mode · Original</string>
+    <string name="service_status_bypassed">Paused while PAudio plays its own sounds</string>
+    <string name="service_status_conflict">Another equalizer app is controlling the audio right now. Close it or turn it off to use PAudio.</string>
+    <string name="service_status_no_profile">No profile for this headset</string>
+    <string name="service_status_speaker">Speaker output (not processed)</string>
+    <string name="service_status_error_creation">This device\'s audio system refused PAudio\'s effect. Try Legacy mode in Settings.</string>
+    <string name="service_status_error_source">PAudio could not listen for music apps. Turn PAudio off and on again, or try Legacy mode in Settings.</string>
+    <string name="service_status_fault">PAudio hit a problem and is retrying…</string>
+    <string name="service_hint_no_session">Your music app isn\'t announcing itself. Try Legacy mode, or check the compatibility list.</string>
+
+    <!-- Notification permission (SPEC §4 item 8) -->
+    <string name="service_notification_permission_denied">PAudio needs its notification to keep working in the background.</string>
+
+    <!-- Boot fallback (DECISIONS §8) -->
+    <string name="service_boot_title">PAudio is not running</string>
+    <string name="service_boot_text">Tap to start PAudio</string>
+
+    <!-- Unknown headset (F17) -->
+    <string name="service_headset_title">New headphones</string>
+    <string name="service_headset_text">These headphones don\'t have a PAudio profile yet.</string>
+    <string name="service_headset_action_create">Create profile</string>
+    <string name="service_headset_action_ignore">Don\'t ask for this device</string>
+    <string name="service_headset_action_use">Use %1$s</string>
+
+    <!-- Wired key collision (SPEC §5.5); the dialog itself is built by the Home/Profiles UI -->
+    <string name="service_which_headphones">Which headphones are these?</string>
+</resources>

@@ -76,6 +76,16 @@ interface ProfileRepository {
 
     suspend fun rename(profileId: Long, name: String)
     suspend fun updateSettings(profileId: Long, settings: ProfileSettings)
+
+    /**
+     * Single-column update of Personalized/Original (cannot undo a concurrent strength/preference write).
+     * Default: read-modify-write through [updateSettings]; the Room implementation overrides it.
+     */
+    suspend fun setPersonalization(profileId: Long, on: Boolean) {
+        val p = get(profileId)?.profile ?: return
+        updateSettings(profileId, ProfileSettings(p.compStrength, p.gB, p.gP, p.gT, on))
+    }
+
     suspend fun setSeedColor(profileId: Long, seedColor: Int?, overridden: Boolean)
     suspend fun delete(profileId: Long)
 
