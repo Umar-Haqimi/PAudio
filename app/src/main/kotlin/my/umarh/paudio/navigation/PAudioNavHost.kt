@@ -52,7 +52,8 @@ fun PAudioNavHost(startDestination: Any, launchRoute: String?, onLaunchRouteHand
         )
         homeScreen(
             onHearingTest = { nav.navigate(HearingTestRoute) },
-            onPreferenceTest = { nav.navigate(PreferenceRoute) },
+            // null = the active listener's profile for the current headset (resolved by :feature:preference).
+            onPreferenceTest = { nav.navigate(PreferenceRoute()) },
             onHealth = { profileId -> nav.navigate(HealthRoute(profileId = profileId)) },
             onProfiles = { nav.navigate(ProfilesRoute()) },
             onSettings = { nav.navigate(SettingsRoute) },
@@ -65,8 +66,7 @@ fun PAudioNavHost(startDestination: Any, launchRoute: String?, onLaunchRouteHand
         )
         resultsScreen(
             onSeeHealth = { profileId, testId -> nav.navigate(HealthRoute(profileId = profileId, testId = testId)) },
-            // TODO(M11): PreferenceRoute will take the profileId passed here.
-            onPreferenceTest = { nav.navigate(PreferenceRoute) },
+            onPreferenceTest = { profileId -> nav.navigate(PreferenceRoute(profileId)) },
             onDone = { nav.popBackStack() },
             // Leaves Results (no exit dialog) and starts a fresh test; the new Results replaces this one.
             onRedoTest = { nav.navigate(HearingTestRoute) { popUpTo<ResultsRoute> { inclusive = true } } },
@@ -76,11 +76,10 @@ fun PAudioNavHost(startDestination: Any, launchRoute: String?, onLaunchRouteHand
         profilesScreen(
             onBack = { nav.popBackStack() },
             onOpenProfile = { nav.navigate(ProfileDetailRoute(it)) },
-            // The hearing-test and preference routes take no profile id yet; the orchestrator adapts these when
-            // HearingTestRoute / PreferenceRoute gain a profileId (M9a / M11).
+            // The hearing-test route takes no profile id yet; the orchestrator adapts it when it gains one (M9a).
             onRetest = { nav.navigate(HearingTestRoute) },
             onHealth = { nav.navigate(HealthRoute(profileId = it)) },
-            onPreferenceTest = { nav.navigate(PreferenceRoute) },
+            onPreferenceTest = { nav.navigate(PreferenceRoute(it)) },
         )
         settingsScreen(onBack = { nav.popBackStack() }, onAbout = { nav.navigate(AboutRoute) })
         aboutScreen(onBack = { nav.popBackStack() })
