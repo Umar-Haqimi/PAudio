@@ -146,7 +146,7 @@ class ResultsViewModel @Inject constructor(
         if (overridden) return
         try {
             if (tests.latest(content.profileId)?.id != content.testId) return
-            val color = ProfileSeedColor.from(content.leftDisplay, content.rightDisplay, content.frequenciesHz)
+            val color = ProfileSeedColor.fromRawHl(content.hlLeft.toList(), content.hlRight.toList(), content.frequenciesHz)
             profiles.setSeedColor(content.profileId, color.toArgb(), overridden = false)
         } catch (ce: CancellationException) {
             throw ce
@@ -170,6 +170,12 @@ class ResultsViewModel @Inject constructor(
         abWanted = false
         prepareJob?.cancel()
         prepareJob = null
+        releaseAb()
+        _ab.update { it.copy(status = AbStatus.IDLE, playing = false) }
+    }
+
+    /** Releases the player and closes the bypass token (no state change). */
+    private fun releaseAb() {
         playingJob?.cancel()
         playingJob = null
         val h = handle
@@ -182,7 +188,6 @@ class ResultsViewModel @Inject constructor(
         val t = token
         token = null
         runCatching { t?.close() }
-        _ab.update { it.copy(status = AbStatus.IDLE, playing = false) }
     }
 
     fun setPersonalized(on: Boolean) {
@@ -270,6 +275,8 @@ class ResultsViewModel @Inject constructor(
                 _ab.update { it.copy(sourceKind = AbSourceKind.DEMO_CLIP, fileName = null, fileError = true) }
                 prepare()
             } else {
+                // Release everything half-built so ERROR never holds the engine bypassed; retry re-acquires.
+                releaseAb()
                 _ab.update { it.copy(status = AbStatus.ERROR, playing = false) }
             }
         }

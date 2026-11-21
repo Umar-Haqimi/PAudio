@@ -6,5 +6,6 @@ plugins {
 
 dependencies {
     implementation(project(":core:model"))
+    implementation(project(":core:audiometry"))
     implementation(libs.androidx.datastore.preferences)
 }

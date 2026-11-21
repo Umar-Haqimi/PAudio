@@ -24,6 +24,13 @@ object ProfileSeedColor {
     const val ASYMMETRY_FULL_DB = 30f
     const val VALUE = 0.75f
 
+    /**
+     * The single seed-colour input: RAW (unclamped) HL_est per ear. Every writer (Results after a test, the app-level
+     * sync) goes through this so they can never disagree.
+     */
+    fun fromRawHl(hlLeft: List<Double>, hlRight: List<Double>, frequenciesHz: List<Int>): Color =
+        from(hlLeft.map { it.toFloat() }, hlRight.map { it.toFloat() }, frequenciesHz)
+
     fun from(hlLeft: List<Float?>, hlRight: List<Float?>, frequenciesHz: List<Int>): Color {
         var bestF: Int? = null
         var bestHl = Float.NEGATIVE_INFINITY

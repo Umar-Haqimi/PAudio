@@ -1,5 +1,6 @@
 package my.umarh.paudio.feature.results
 
+import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
@@ -99,6 +100,7 @@ class ResultsViewModelTest {
         override suspend fun load(src: AudioSource, loop: ClosedRange<kotlin.time.Duration>?) {
             bypassOpenAtLoad += bypass.openCount
             if (backend.failUserFiles && src is AudioSource.Uri) throw IOException("unsupported")
+            if (backend.failClips && src !is AudioSource.Uri) throw IOException("clip failed")
             inner.load(src, loop)
         }
     }
@@ -107,6 +109,7 @@ class ResultsViewModelTest {
         val players = mutableListOf<ProbedPlayer>()
         val player: ProbedPlayer get() = players.last()
         var failUserFiles = false
+        var failClips = false
 
         /** Treble-heavy clip LTAS: differs clearly from pink so the clip and user-file plans can be told apart. */
         val clipPredictor = LoudnessPredictor(DoubleArray(ThirdOctaveBands.COUNT) { if (it < 14) 0.02 else 1.0 })
@@ -372,6 +375,37 @@ class ResultsViewModelTest {
         settle()
         assertThat(r.bypass.openCount).isEqualTo(0)
         assertThat(r.backend.created).isEqualTo(0)
+    }
+
+    @Test
+    fun clipFailure_releasesTheTokenAndPlayer_andRetryReacquiresIt() = runTest(dispatcher) {
+        val r = rig()
+        settle()
+        r.backend.failClips = true
+        r.vm.startAb()
+        settle()
+        assertThat(r.vm.ab.value.status).isEqualTo(AbStatus.ERROR)
+        assertThat(r.bypass.openCount).isEqualTo(0)
+        assertThat(r.bypass.bypassed.value).isFalse()
+        assertThat(r.fake.released).isTrue()
+
+        r.backend.failClips = false
+        r.vm.retryAb()
+        settle()
+        assertThat(r.vm.ab.value.status).isEqualTo(AbStatus.READY)
+        assertThat(r.bypass.openCount).isEqualTo(1)
+        r.vm.stopAb()
+        assertThat(r.bypass.openCount).isEqualTo(0)
+    }
+
+    @Test
+    fun seedColour_usesTheSharedRawHlFunction_soItAgreesWithTheAppLevelSync() = runTest(dispatcher) {
+        val r = rig()
+        settle()
+        val c = contentOf(r)
+        val expected = my.umarh.paudio.designsystem.ProfileSeedColor
+            .fromRawHl(c.hlLeft.toList(), c.hlRight.toList(), c.frequenciesHz).toArgb()
+        assertThat(r.profiles.seedWrites.single().color).isEqualTo(expected)
     }
 
     @Test

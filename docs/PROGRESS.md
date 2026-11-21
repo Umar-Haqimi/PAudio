@@ -184,3 +184,11 @@ Pending reviews: Opus re-verify of M7a P0 fixes; Sonnet review of M10. See `docs
 - Simulated timing (DECISIONS §18 model): Quick test phase 7.3–8.2 min (5 seeds), Thorough 7.9 min at 12 s/run.
 - Known gaps: process death mid-test leaves the calibrated volume (the original index is not persisted) and the engine restores on service start; a paused session is aborted after 5 min (`PAUSE_TIMEOUT`).
 - Device-only checks (HARDWARE_TEST): tones through TalkBack speech, haptic tick timing vs gaps on the dial, volume restore after refused `setStreamVolume`, headset unplug mid-stimulus, focus loss during a call, channel-check level (-45..-30 dBFS at 0.5×max) audible/safe on real earphones, BT dead-object recovery.
+
+### M8b/M9b review fixes
+- One measurement helper: `core/audiometry` `measureThresholds(RawThreshold)` (pure Kotlin) + `:data` `List<ThresholdEntity>.measure()`. `HomeViewModel.butterfly`, `ProfileMeasure.butterfly/seedColor`, `ResultsMapper.measure` and `HealthMapper.measure` now delegate (behaviour unchanged: all four were identical; raw, unclamped HL).
+- One seed-colour function: `ProfileSeedColor.fromRawHl` (raw HL). Results (tested profile, even if not the active one) and `AppViewModel.seedSync` (themed profile) both use it, so they agree; Results previously used display-clamped HL. `seedOverridden` respected by both.
+- `ResultsViewModel.prepare()` ERROR branch now releases the player and bypass token; retry re-acquires.
+- `AppViewModel` seed sync: write wrapped in try/catch and the flow has `.catch` (class name only is logged).
+- Results copy: "high pitches" wording only when every censored point is at >= 10 kHz (`ResultsContent.beyondRangeOnlyHigh`), else neutral "Some pitches" (`results_beyond_range_any_*`).
+- Tests: Results VM (token released on clip failure + retry, seed = shared function), mapper wording gate, Profiles seed-colour consistency. No AppViewModel unit test (`:app` has no test source set).

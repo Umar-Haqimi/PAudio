@@ -24,6 +24,7 @@ import my.umarh.paudio.core.audiometry.ThresholdPoint
 import my.umarh.paudio.core.model.Ear
 import my.umarh.paudio.core.model.FrequencyGrid
 import my.umarh.paudio.data.db.ThresholdEntity
+import my.umarh.paudio.data.db.measure
 import my.umarh.paudio.data.repo.HearingTestRepository
 import my.umarh.paudio.data.repo.ListenerProfiles
 import my.umarh.paudio.data.repo.ProfileRepository
@@ -216,17 +217,7 @@ class HomeViewModel @Inject constructor(
 
         /** HL_est per ear from raw thresholds; null when the set is incomplete (as the hearing-health screen). */
         fun butterfly(thresholds: List<ThresholdEntity>): HomeButterfly? {
-            val byEar = Ear.entries.associateWith { ear ->
-                thresholds.filter { it.ear == ear && it.levelDbfs != null }.associateBy { it.freqHz }
-            }
-            if (!byEar.values.all { pts -> FrequencyGrid.TEST_FREQUENCIES_HZ.all { it in pts } }) return null
-            val points = byEar.mapValues { (_, pts) ->
-                FrequencyGrid.TEST_FREQUENCIES_HZ.map { f ->
-                    val t = pts.getValue(f)
-                    ThresholdPoint(f, t.levelDbfs!!.toDouble(), t.censored)
-                }
-            }
-            val r = MeasurementModel.compute(points)
+            val r = thresholds.measure() ?: return null
             fun hl(ear: Ear): List<Float?> = r.hlEst.getValue(ear).map { it.toFloat() }
             return HomeButterfly(hl(Ear.LEFT), hl(Ear.RIGHT), r.freqsHz)
         }

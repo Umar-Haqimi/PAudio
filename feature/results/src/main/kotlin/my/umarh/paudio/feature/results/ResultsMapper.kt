@@ -10,6 +10,7 @@ import my.umarh.paudio.core.model.FrequencyGrid
 import my.umarh.paudio.core.model.TestMode
 import my.umarh.paudio.data.db.HearingTestEntity
 import my.umarh.paudio.data.db.ThresholdEntity
+import my.umarh.paudio.data.db.measure
 
 /**
  * Plain-words band of one ear's estimated PTA3. It is derived from the WHO band edges (SPEC 2.1.2) but is deliberately
@@ -28,6 +29,8 @@ data class EarResult(
     val ehfBeyondRange: Boolean,
     /** Any grid point of this ear was censored (not reached at L_max). */
     val anyCensored: Boolean,
+    /** Every censored point of this ear is at 10 kHz or above (extended high frequencies); false when none or any lower. */
+    val censoredOnlyHigh: Boolean = false,
 )
 
 @Immutable
@@ -64,24 +67,18 @@ class ResultsContent(
     val reliability: ReliabilityNote,
 ) {
     val anyCensored: Boolean get() = left.anyCensored || right.anyCensored
+
+    /** The "high pitches" wording is only right when every censored point (either ear) is at 10 kHz or above. */
+    val beyondRangeOnlyHigh: Boolean
+        get() = (!left.anyCensored || left.censoredOnlyHigh) && (!right.anyCensored || right.censoredOnlyHigh)
 }
 
 /** Pure mapping from stored raw thresholds to Results UI pieces. Derived values are recomputed, never stored. */
 object ResultsMapper {
+    private const val EHF_MIN_HZ = 10_000
+
     /** Null when the stored thresholds are incomplete (every grid point of both ears is required). */
-    fun measure(thresholds: List<ThresholdEntity>): MeasurementResult? {
-        val byEar = Ear.entries.associateWith { ear ->
-            thresholds.filter { it.ear == ear && it.levelDbfs != null }.associateBy { it.freqHz }
-        }
-        if (!byEar.values.all { pts -> FrequencyGrid.TEST_FREQUENCIES_HZ.all { it in pts } }) return null
-        val points = byEar.mapValues { (_, pts) ->
-            FrequencyGrid.TEST_FREQUENCIES_HZ.map { f ->
-                val t = pts.getValue(f)
-                ThresholdPoint(f, t.levelDbfs!!.toDouble(), t.censored)
-            }
-        }
-        return MeasurementModel.compute(points)
-    }
+    fun measure(thresholds: List<ThresholdEntity>): MeasurementResult? = thresholds.measure()
 
     fun wording(pta3: Double): PtaWording = when (MeasurementModel.whoGrade(pta3)) {
         WhoGrade.NORMAL -> PtaWording.SIMILAR
@@ -104,6 +101,7 @@ object ResultsMapper {
             wording = wording(pta),
             ehfBeyondRange = ehfIdx.any { cens[it] },
             anyCensored = cens.any { it },
+            censoredOnlyHigh = cens.any { it } && result.freqsHz.indices.all { i -> !cens[i] || result.freqsHz[i] >= EHF_MIN_HZ },
         )
     }
 

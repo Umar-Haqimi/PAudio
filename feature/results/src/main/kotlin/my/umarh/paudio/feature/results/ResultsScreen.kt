@@ -378,10 +378,13 @@ private fun NotesCard(content: ResultsContent, onRedoTest: (() -> Unit)?) {
             Note(StatusTone.Info, PAudioIcons.Info, stringResource(R.string.results_asymmetry_chip), stringResource(R.string.results_asymmetry_body))
         }
         if (content.anyCensored) {
+            val high = content.beyondRangeOnlyHigh
             val body = when {
-                content.left.anyCensored && content.right.anyCensored -> R.string.results_beyond_range_both
-                content.left.anyCensored -> R.string.results_beyond_range_left
-                else -> R.string.results_beyond_range_right
+                content.left.anyCensored && content.right.anyCensored ->
+                    if (high) R.string.results_beyond_range_both else R.string.results_beyond_range_any_both
+                content.left.anyCensored ->
+                    if (high) R.string.results_beyond_range_left else R.string.results_beyond_range_any_left
+                else -> if (high) R.string.results_beyond_range_right else R.string.results_beyond_range_any_right
             }
             Note(StatusTone.Info, PAudioIcons.Info, stringResource(R.string.results_beyond_range_chip), stringResource(body))
         }
