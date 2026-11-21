@@ -131,6 +131,11 @@ Run both Quick and Thorough on each earphone type.
 
 - [ ] Run a minified, signed release build through the complete flow: onboarding, Quick test, Results, preference test, Hearing health, export/import, system-wide EQ with a player, reboot. Expected: no R8-related crash, nothing missing from the About screen. (SPEC §6, §9)
 - [ ] `adb logcat` during the flow shows no thresholds, curves, listener names, device names or package names.
+- [ ] **Full flow on the minified release APK (M12).** Build with `./gradlew :app:assembleRelease` (unsigned unless `keystore.properties` or the `PAUDIO_KEYSTORE_*` variables exist; sign with `apksigner` and a throw-away key for the test, see DECISIONS §26). Install over a clean profile and run the whole flow above. Expected: navigation works to every destination (type-safe routes are R8-kept), profile **export then import round-trips** (JSON fields intact), Room opens (no `PAudioDatabase_Impl` missing), Hilt injects every screen, the A/B player plays the demo clip.
+- [ ] **Logcat privacy grep (M12, SPEC §9).** Capture `adb logcat -d` across the release flow and run `grep -iE "threshold|\bhl\b|profile|listener|[0-9A-F]{2}(:[0-9A-F]{2}){5}" capture.txt`. Expected: no hearing value, name, device name or Bluetooth address. The static check `verifyNoSensitiveLogging` guards the sources; this guards what libraries print.
+- [ ] **Backup rules (M12).** `adb shell bmgr backupnow my.umarh.paudio` then inspect the transport: the database, SharedPreferences and `datastore/` are NOT in the cloud backup. Device-to-device transfer to a second phone keeps profiles. (docs/PRIVACY.md)
+- [ ] **Release APK size and start-up (M12).** Cold start to Home in under ~1.5 s on a mid-range device, no jank in the butterfly draw-in or EQ graph toggle (GPU rendering profile or `dumpsys gfxinfo` janky frames under ~5 %).
+- [ ] **TalkBack and stimuli (M12, trap 20).** With TalkBack on, run the Quick test: nothing is spoken while a tone plays (focus changes, "Heard"/"Not heard" are only spoken after your answer), and the hear button is operable with double-tap.
 
 ---
 

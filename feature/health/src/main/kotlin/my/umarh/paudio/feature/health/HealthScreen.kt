@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
@@ -131,7 +132,7 @@ internal fun HealthScreenContent(
             TopAppBar(
                 title = { Text(stringResource(R.string.feature_health_title), modifier = Modifier.semantics { heading() }) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
                         PAudioIcon(PAudioIcons.ArrowBack, contentDescription = stringResource(R.string.health_back))
                     }
                 },

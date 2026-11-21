@@ -26,6 +26,14 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             signingValue("keyAlias", "PAUDIO_KEY_ALIAS") != null &&
             signingValue("keyPassword", "PAUDIO_KEY_PASSWORD") != null
 
+        // M12 (DECISIONS §26): with no keystore the release APK stays unsigned. For a local install/smoke test it can
+        // be signed with the DEBUG key on request only: -Ppaudio.signReleaseWithDebugKey=true or
+        // PAUDIO_SIGN_RELEASE_WITH_DEBUG_KEY=1. Never do this for a distributed build.
+        val debugSignRelease = !hasSigning && (
+            providers.gradleProperty("paudio.signReleaseWithDebugKey").orNull == "true" ||
+                System.getenv("PAUDIO_SIGN_RELEASE_WITH_DEBUG_KEY") == "1"
+            )
+
         addAndroidTestDependencies()
         extensions.configure<ApplicationExtension> {
             namespace = PACKAGE_ROOT
@@ -60,7 +68,11 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                         getDefaultProguardFile("proguard-android-optimize.txt"),
                         "proguard-rules.pro",
                     )
-                    if (hasSigning) signingConfig = signingConfigs.getByName("release")
+                    if (hasSigning) {
+                        signingConfig = signingConfigs.getByName("release")
+                    } else if (debugSignRelease) {
+                        signingConfig = signingConfigs.getByName("debug")
+                    }
                 }
             }
         }

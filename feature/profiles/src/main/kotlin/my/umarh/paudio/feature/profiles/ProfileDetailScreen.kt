@@ -45,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -406,7 +407,10 @@ private fun ColorCard(state: ProfileDetailUiState, actions: DetailActions) {
                     contentAlignment = Alignment.Center,
                 ) {
                     // A check mark, not the colour alone, marks the selection.
-                    if (selected) PAudioIcon(PAudioIcons.Check, null, Modifier.size(24.dp), tint = Color.White)
+                    // Black on the light amber swatch: white would be only 2.6:1 (non-text contrast needs 3:1).
+                    if (selected) {
+                        PAudioIcon(PAudioIcons.Check, null, Modifier.size(24.dp), tint = if (s.color.luminance() > 0.3f) Color.Black else Color.White)
+                    }
                 }
             }
         }
