@@ -34,10 +34,10 @@ tasks.named("check") { dependsOn(verifyFeatureBoundaries) }
 // SPEC §6 / §9: no hearing data, names, addresses or exception messages in log calls (static scan, M12).
 val verifyNoSensitiveLogging = tasks.register<VerifyNoSensitiveLoggingTask>("verifyNoSensitiveLogging") {
     group = "verification"
-    description = "Fails if a production log/print call mentions hearing data, names, addresses or exception messages."
+    description = "Fails if a production log/print call has any argument other than constant text (allowlist) or uses printStackTrace."
     sources.from(
         fileTree(layout.projectDirectory) {
-            include("**/src/main/**/*.kt")
+            include("**/src/main/**/*.kt", "**/src/main/**/*.java")
             exclude("**/build/**", "build-logic/**", ".claude/**", "tools/**")
         },
     )
