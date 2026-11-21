@@ -11,7 +11,7 @@ import androidx.compose.ui.res.stringResource
 
 /** Type-safe navigation destination for this feature. */
 @Serializable
-data object ResultsRoute
+data class ResultsRoute(val testId: Long)
 
 /** Registers the placeholder destination; replaced by the real flow in a later milestone. */
 fun NavGraphBuilder.resultsScreen(onBack: () -> Unit) {

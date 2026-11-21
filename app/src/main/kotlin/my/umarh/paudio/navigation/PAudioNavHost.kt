@@ -31,14 +31,14 @@ fun PAudioNavHost() {
             },
         )
         homeScreen(
-            onHearingTest = { nav.navigate(HearingTestRoute) },
+            onHearingTest = { nav.navigate(HearingTestRoute()) },
             onPreferenceTest = { nav.navigate(PreferenceRoute) },
             onHealth = { nav.navigate(HealthRoute()) },
             onProfiles = { nav.navigate(ProfilesRoute) },
             onSettings = { nav.navigate(SettingsRoute) },
         )
         hearingTestScreen(
-            onShowResults = { nav.navigate(ResultsRoute) { popUpTo(HearingTestRoute) { inclusive = true } } },
+            onShowResults = { id -> nav.navigate(ResultsRoute(testId = id)) { popUpTo<HearingTestRoute> { inclusive = true } } },
             onBack = { nav.popBackStack() },
         )
         resultsScreen(onBack = { nav.popBackStack() })

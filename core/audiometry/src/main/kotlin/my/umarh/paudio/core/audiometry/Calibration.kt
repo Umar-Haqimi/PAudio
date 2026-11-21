@@ -120,8 +120,13 @@ class CalibrationSession(
     val minIndex: Int,
     val maxIndex: Int,
     private val indexDb: (Int) -> Float?,
+    /**
+     * The index actually in effect when the first ramp starts. Defaults to [Calibration.initialIndex]; a caller whose
+     * `setStreamVolume` was refused/clamped passes the read-back index so reruns are planned from the real volume.
+     */
+    startIndex: Int = Calibration.initialIndex(maxIndex),
 ) {
-    var currentIndex: Int = Calibration.initialIndex(maxIndex).coerceIn(minIndex, maxIndex)
+    var currentIndex: Int = startIndex.coerceIn(minIndex, maxIndex)
         private set
     var reruns: Int = 0
         private set
