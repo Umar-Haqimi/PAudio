@@ -1,6 +1,133 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="feature_hearingtest_title">Hearing test</string>
-    <string name="hearingtest_show_results">Show results</string>
     <string name="hearingtest_back">Back</string>
+    <string name="hearingtest_default_listener_name">Me</string>
+    <string name="hearingtest_default_profile_name">My headphones</string>
+
+    <!-- Mode choice -->
+    <string name="hearingtest_mode_heading">Choose a test</string>
+    <string name="hearingtest_mode_intro">Both tests estimate how each ear hears 1 to 14 kHz through your earphones.</string>
+    <string name="hearingtest_mode_quick_title">Quick</string>
+    <string name="hearingtest_mode_quick_duration">≈ %1$d–%2$d min</string>
+    <string name="hearingtest_mode_quick_desc">Short beeps. Tell us whether you heard each one.</string>
+    <string name="hearingtest_mode_thorough_title">Thorough</string>
+    <string name="hearingtest_mode_thorough_duration">≈ %1$d–%2$d min</string>
+    <string name="hearingtest_mode_thorough_desc">A pulsing tone. You turn the level down or up until it just disappears or appears.</string>
+    <string name="hearingtest_mode_selected">Selected</string>
+
+    <!-- Pre-test page (F2) -->
+    <string name="hearingtest_prep_heading">Before you start</string>
+    <string name="hearingtest_prep_quiet">Go to a quiet area</string>
+    <string name="hearingtest_prep_anc">Turn on noise cancellation if your earphones support it</string>
+    <string name="hearingtest_prep_dnd">Turn on Do Not Disturb</string>
+    <string name="hearingtest_prep_dnd_on">Do Not Disturb is on.</string>
+    <string name="hearingtest_prep_dnd_off">Do Not Disturb is off. Calls and notifications will interrupt the test.</string>
+    <string name="hearingtest_prep_dnd_unknown">We can\'t tell whether Do Not Disturb is on.</string>
+    <string name="hearingtest_prep_anc_checkbox">Noise cancellation is on</string>
+    <string name="hearingtest_prep_eq_tip">Turn off other equalizers, Dolby and adaptive sound features on your phone or earphones while you test.</string>
+    <string name="hearingtest_prep_unknown_checks">Some audio settings could not be checked on this device. Make sure mono audio, balance and spatial audio are off.</string>
+    <string name="hearingtest_prep_blockers_heading">Fix this before testing</string>
+    <string name="hearingtest_blocker_mono">Mono audio is on. Turn it off in the Accessibility settings so each ear can be tested separately.</string>
+    <string name="hearingtest_blocker_balance">The audio balance is not centered. Center it in the Accessibility settings.</string>
+    <string name="hearingtest_blocker_spatializer">Spatial audio is on. Turn it off so the tone stays in one ear.</string>
+    <string name="hearingtest_blocker_no_headphones">Connect your earphones. PAudio doesn\'t test through the phone\'s speaker.</string>
+    <string name="hearingtest_blocker_wrong_headset">This profile belongs to %1$s. Connect it to test this profile.</string>
+    <string name="hearingtest_blocker_profile_missing">This profile no longer exists.</string>
+    <string name="hearingtest_prep_start">Start the test</string>
+    <string name="hearingtest_prep_noise_heading">Room noise (optional)</string>
+    <string name="hearingtest_prep_noise_offer">Check the room noise</string>
+    <string name="hearingtest_prep_noise_explain">Uses the microphone only to measure how loud the room is, live. Nothing is recorded or saved.</string>
+    <string name="hearingtest_prep_noise_measuring">Listening to the room…</string>
+    <string name="hearingtest_prep_noise_quiet">Room noise: Quiet</string>
+    <string name="hearingtest_prep_noise_ok">Room noise: OK</string>
+    <string name="hearingtest_prep_noise_too_noisy">Room noise: Too noisy. Find a quieter spot.</string>
+    <string name="hearingtest_prep_noise_unknown">The microphone gave no reading.</string>
+    <string name="hearingtest_prep_noise_stop">Stop checking</string>
+
+    <!-- Starting / saving -->
+    <string name="hearingtest_starting">Getting ready…</string>
+    <string name="hearingtest_saving">Saving your results…</string>
+
+    <!-- Channel check (F3) -->
+    <string name="hearingtest_channel_heading">Which ear?</string>
+    <string name="hearingtest_channel_step">Check %1$d of %2$d</string>
+    <string name="hearingtest_channel_instruction">You will hear a beep in one ear. Tell us which one.</string>
+    <string name="hearingtest_channel_left">Left ear</string>
+    <string name="hearingtest_channel_right">Right ear</string>
+    <string name="hearingtest_channel_both">Both ears</string>
+    <string name="hearingtest_channel_louder">I can\'t hear anything</string>
+    <string name="hearingtest_channel_wrong">Your earbuds may be swapped or in mono mode</string>
+    <string name="hearingtest_channel_wrong_hint">Check that the left earbud is in your left ear and mono audio is off, then try again.</string>
+    <string name="hearingtest_channel_too_quiet">We made the beep a little louder.</string>
+
+    <!-- Calibration (F4) -->
+    <string name="hearingtest_cal_heading">Setting the volume</string>
+    <string name="hearingtest_cal_instruction">Beeps start silent and slowly get louder. Tap the button the moment you hear one.</string>
+    <string name="hearingtest_cal_button">I hear it</string>
+    <string name="hearingtest_cal_preparing">Getting the volume ready…</string>
+    <string name="hearingtest_cal_rerun">Adjusting the volume to suit your earphones (attempt %1$d)…</string>
+    <string name="hearingtest_cal_refused_note">We couldn\'t change the volume automatically, so we are using your current setting.</string>
+    <string name="hearingtest_cal_manual_up">Turn the volume up a few steps with your phone\'s volume keys, then tap Continue.</string>
+    <string name="hearingtest_cal_manual_down">Turn the volume down a few steps with your phone\'s volume keys, then tap Continue.</string>
+    <string name="hearingtest_cal_manual_continue">Continue</string>
+    <string name="hearingtest_cal_dont_touch">Don\'t touch the volume during the test.</string>
+
+    <!-- Testing (F5-F7) -->
+    <string name="hearingtest_quick_heading">Listen for faint beeps</string>
+    <string name="hearingtest_quick_instruction">Tap the big button as soon as you hear a beep, even a very faint one. If you don\'t hear anything, tap \"I didn\'t\".</string>
+    <string name="hearingtest_quick_heard">I heard it</string>
+    <string name="hearingtest_quick_didnt">I didn\'t</string>
+    <string name="hearingtest_thorough_heading">Find where the tone just fades</string>
+    <string name="hearingtest_thorough_desc_instruction">The tone starts loud. Slide the dial down until you can no longer hear it, then confirm.</string>
+    <string name="hearingtest_thorough_asc_instruction">The tone starts very quiet. Slide the dial up until you can just hear it, then confirm.</string>
+    <string name="hearingtest_thorough_confirm_desc">I can\'t hear it anymore</string>
+    <string name="hearingtest_thorough_confirm_asc">I can hear it now</string>
+    <string name="hearingtest_thorough_limit_top">I can\'t hear it even at the top</string>
+    <string name="hearingtest_thorough_limit_bottom">I still hear it at the bottom</string>
+    <string name="hearingtest_dial_description">Level dial. Slide up for louder, down for quieter.</string>
+    <string name="hearingtest_dial_louder">Louder</string>
+    <string name="hearingtest_dial_quieter">Quieter</string>
+    <string name="hearingtest_progress_label">Test progress</string>
+    <plurals name="hearingtest_points_progress">
+        <item quantity="one">%1$d of %2$d point done</item>
+        <item quantity="other">%1$d of %2$d points done</item>
+    </plurals>
+    <string name="hearingtest_cal_warning">The volume is a little outside the ideal range, so results may be less precise.</string>
+    <string name="hearingtest_ack_heard">Heard</string>
+    <string name="hearingtest_ack_not_heard">Not heard</string>
+    <string name="hearingtest_ack_confirmed">Level saved</string>
+
+    <!-- Paused (F8) -->
+    <string name="hearingtest_paused_heading">Test paused</string>
+    <string name="hearingtest_paused_headset">Your earphones disconnected. Reconnect them to continue.</string>
+    <string name="hearingtest_paused_volume">The volume changed, so we\'ll redo this tone. Please don\'t touch the volume during the test.</string>
+    <string name="hearingtest_paused_focus">Paused for another app\'s audio.</string>
+    <string name="hearingtest_paused_background">Paused while PAudio was in the background.</string>
+    <string name="hearingtest_paused_unreliable">Some answers looked like guesses. Want to redo the test?</string>
+    <string name="hearingtest_paused_volume_keys">We couldn\'t restore the volume automatically. Please set the volume with your phone\'s volume keys, then continue.</string>
+    <string name="hearingtest_paused_continue">Continue</string>
+    <string name="hearingtest_paused_redo">Redo the test</string>
+    <string name="hearingtest_paused_keep_going">Continue anyway</string>
+    <string name="hearingtest_paused_keep_results">Keep these results</string>
+    <string name="hearingtest_paused_exit">Exit the test</string>
+
+    <!-- Aborted -->
+    <string name="hearingtest_aborted_heading">The test stopped</string>
+    <string name="hearingtest_aborted_cant_hear">Can\'t hear anything? Check connection</string>
+    <string name="hearingtest_aborted_cant_hear_hint">Make sure your earphones are connected and in your ears, then try again.</string>
+    <string name="hearingtest_aborted_volume_range">Your volume range doesn\'t suit testing. Try other earphones or check the connection.</string>
+    <string name="hearingtest_aborted_audio_error">The audio output stopped working. Check your earphones and try again.</string>
+    <string name="hearingtest_aborted_pause_timeout">The test was paused for too long, so it was stopped. Start again when you\'re ready.</string>
+    <string name="hearingtest_aborted_save_failed">We couldn\'t save your results. Please try again.</string>
+    <string name="hearingtest_aborted_no_headphones">Connect your earphones. PAudio doesn\'t test through the phone\'s speaker.</string>
+    <string name="hearingtest_aborted_user">The test was stopped.</string>
+    <string name="hearingtest_aborted_try_again">Try again</string>
+    <string name="hearingtest_aborted_close">Close</string>
+
+    <!-- Exit confirmation -->
+    <string name="hearingtest_exit_title">Stop the test?</string>
+    <string name="hearingtest_exit_text">If you leave now, your progress is lost.</string>
+    <string name="hearingtest_exit_stop">Stop the test</string>
+    <string name="hearingtest_exit_keep">Keep going</string>
 </resources>

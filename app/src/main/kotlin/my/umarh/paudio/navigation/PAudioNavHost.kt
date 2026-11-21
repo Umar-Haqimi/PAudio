@@ -51,7 +51,7 @@ fun PAudioNavHost(startDestination: Any, launchRoute: String?, onLaunchRouteHand
             },
         )
         homeScreen(
-            onHearingTest = { nav.navigate(HearingTestRoute) },
+            onHearingTest = { nav.navigate(HearingTestRoute()) },
             // null = the active listener's profile for the current headset (resolved by :feature:preference).
             onPreferenceTest = { nav.navigate(PreferenceRoute()) },
             onHealth = { profileId -> nav.navigate(HealthRoute(profileId = profileId)) },
@@ -60,8 +60,7 @@ fun PAudioNavHost(startDestination: Any, launchRoute: String?, onLaunchRouteHand
             onCreateProfile = { nav.navigate(ProfilesRoute(createForCurrent = true)) },
         )
         hearingTestScreen(
-            // TODO(M9a): navigate with the saved test's id once the hearing-test flow records it (0L is a placeholder).
-            onShowResults = { nav.navigate(ResultsRoute(testId = 0L)) { popUpTo(HearingTestRoute) { inclusive = true } } },
+            onShowResults = { id -> nav.navigate(ResultsRoute(testId = id)) { popUpTo<HearingTestRoute> { inclusive = true } } },
             onBack = { nav.popBackStack() },
         )
         resultsScreen(
@@ -69,15 +68,14 @@ fun PAudioNavHost(startDestination: Any, launchRoute: String?, onLaunchRouteHand
             onPreferenceTest = { profileId -> nav.navigate(PreferenceRoute(profileId)) },
             onDone = { nav.popBackStack() },
             // Leaves Results (no exit dialog) and starts a fresh test; the new Results replaces this one.
-            onRedoTest = { nav.navigate(HearingTestRoute) { popUpTo<ResultsRoute> { inclusive = true } } },
+            onRedoTest = { nav.navigate(HearingTestRoute()) { popUpTo<ResultsRoute> { inclusive = true } } },
         )
         healthScreen(onBack = { nav.popBackStack() })
         preferenceScreen(onBack = { nav.popBackStack() })
         profilesScreen(
             onBack = { nav.popBackStack() },
             onOpenProfile = { nav.navigate(ProfileDetailRoute(it)) },
-            // The hearing-test route takes no profile id yet; the orchestrator adapts it when it gains one (M9a).
-            onRetest = { nav.navigate(HearingTestRoute) },
+            onRetest = { nav.navigate(HearingTestRoute(profileId = it)) },
             onHealth = { nav.navigate(HealthRoute(profileId = it)) },
             onPreferenceTest = { nav.navigate(PreferenceRoute(it)) },
         )
