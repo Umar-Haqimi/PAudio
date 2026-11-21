@@ -225,3 +225,6 @@ Pending reviews: Opus re-verify of M7a P0 fixes; Sonnet review of M10. See `docs
 - M12 has had no independent review. Its trap 20 gap needs a behavioural test in `:feature:hearingtest`.
 - Whole-project `./gradlew check assembleDebug` passed on M12's branch; on the merged tip, `:app:assembleDebug`,
   `:app:verifyPermissions`, `verifyNoSensitiveLogging` and `:testing:test` pass.
+
+## Session 3 — polish fixes outside the hearing-test feature (DECISIONS §28)
+- VolumeLock defers the volume restore when the start device is gone (never writes to the speaker); Results "Test again" keeps the profileId; Preference back button 48 dp; `:data` `DataTransactions` + `AndroidPreferenceData.save` in one transaction; `:app` test source set with the seed-sync test; Samsung `mono_audio` read; `gen_all.py --check` (vectors verified identical); LICENSE verified byte-identical to gnu.org's `gpl-3.0.txt`; `<queries>` reviewed (justified, unchanged).

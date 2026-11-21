@@ -131,4 +131,45 @@ class VolumeLogicTest {
         lock.release()
         assertThat(vc.index()).isEqualTo(3) // 4 >= original 3: restore to original
     }
+
+    private class DeviceVolume(val vc: FakeVolumeController, var device: Int) :
+        my.umarh.paudio.core.model.VolumeController by vc, DeviceAwareVolume {
+        val deferredRestore = DeferredRestore()
+        val writesByDevice = mutableListOf<Pair<Int, Int>>()
+        override fun setIndex(i: Int): Int {
+            writesByDevice += device to i
+            return vc.setIndex(i)
+        }
+        override fun outputDeviceKey(): Int? = device
+        override fun deferRestore(deviceKey: Int, index: Int) = deferredRestore.defer(deviceKey, index)
+        override fun cancelDeferredRestore() = deferredRestore.cancel()
+    }
+
+    @Test
+    fun releaseWhileUnpluggedNeverWritesToTheSpeakerAndDefersUntilReconnect() {
+        val headset = 3
+        val speaker = 2
+        val dv = DeviceVolume(FakeVolumeController(maxIndex = 15, initialIndex = 9), headset)
+        val lock = VolumeLock(dv)
+        lock.lock(5)
+        dv.device = speaker // unplugged mid-test
+        lock.release()
+        assertThat(dv.writesByDevice).containsExactly(headset to 5) // no write on the speaker
+        assertThat(dv.deferredRestore.pending).isTrue()
+        assertThat(dv.deferredRestore.onDevice(speaker)).isNull() // still unplugged
+        assertThat(dv.deferredRestore.onDevice(headset)).isEqualTo(9) // reconnected: restore original
+        assertThat(dv.deferredRestore.pending).isFalse()
+    }
+
+    @Test
+    fun releaseOnTheStartDeviceRestoresImmediatelyAndNewLockCancelsDeferred() {
+        val dv = DeviceVolume(FakeVolumeController(maxIndex = 15, initialIndex = 9), 3)
+        val lock = VolumeLock(dv)
+        lock.lock(5)
+        lock.release()
+        assertThat(dv.writesByDevice).containsExactly(3 to 5, 3 to 9).inOrder()
+        dv.deferredRestore.defer(3, 1)
+        VolumeLock(dv).lock(6)
+        assertThat(dv.deferredRestore.pending).isFalse()
+    }
 }

@@ -85,7 +85,7 @@ class AppViewModel @Inject constructor(
             _start.value = if (settings.onboardingDone.first()) AppStart.Home else AppStart.Onboarding
         }
         viewModelScope.launch {
-            seedSync().collect { (id, seed) ->
+            seedSync(themeProfile, tests).collect { (id, seed) ->
                 // A failed write must not end the collector (it is the only app-level seed writer); no personal data logged.
                 try {
                     profiles.setSeedColor(id, seed, false)
@@ -103,12 +103,24 @@ class AppViewModel @Inject constructor(
     /** `null` keeps the default resolution ("Not now"). */
     fun answerWhichHeadphones(profileId: Long?) = engine.answerWhichHeadphones(profileId)
 
-    /**
-     * Keeps the stored seed colour of the themed profile in step with its latest complete test (F25), unless the
-     * user picked a colour (`seedOverridden`). Emits (profileId, seed) only when the stored value is stale.
-     */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private fun seedSync(): Flow<Pair<Long, Int>> = themeProfile.flatMapLatest { p ->
+    private companion object {
+        const val TAG = "AppViewModel"
+    }
+}
+
+internal fun pickThemeProfile(active: ActiveProfile, listenerId: Long?, groups: List<ListenerProfiles>): ProfileEntity? {
+    if (active is ActiveProfile.Resolved) return active.profile
+    val group = groups.firstOrNull { it.listener.id == listenerId } ?: groups.firstOrNull() ?: return null
+    return (group.profiles.firstOrNull { it.headset == null } ?: group.profiles.firstOrNull())?.profile
+}
+
+/**
+ * Keeps the stored seed colour of the themed profile in step with its latest complete test (F25), unless the
+ * user picked a colour (`seedOverridden`). Emits (profileId, seed) only when the stored value is stale.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+internal fun seedSync(themeProfile: Flow<ProfileEntity?>, tests: HearingTestRepository): Flow<Pair<Long, Int>> =
+    themeProfile.flatMapLatest { p ->
         if (p == null || p.seedOverridden) {
             flowOf()
         } else {
@@ -120,15 +132,4 @@ class AppViewModel @Inject constructor(
                 .map { derived -> derived?.takeIf { it != p.seedColor }?.let { p.id to it } }
                 .filterNotNull()
         }
-    }.catch { t -> Log.w(TAG, "seed colour observe failed: ${t.javaClass.simpleName}") }
-
-    private companion object {
-        const val TAG = "AppViewModel"
-
-        fun pickThemeProfile(active: ActiveProfile, listenerId: Long?, groups: List<ListenerProfiles>): ProfileEntity? {
-            if (active is ActiveProfile.Resolved) return active.profile
-            val group = groups.firstOrNull { it.listener.id == listenerId } ?: groups.firstOrNull() ?: return null
-            return (group.profiles.firstOrNull { it.headset == null } ?: group.profiles.firstOrNull())?.profile
-        }
-    }
-}
+    }.catch { t -> Log.w("AppViewModel", "seed colour observe failed: ${t.javaClass.simpleName}") }

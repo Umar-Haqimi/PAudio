@@ -16,7 +16,7 @@ import javax.inject.Inject
 
 /**
  * Reads mono audio, balance, spatializer and DND without any permission (docs/DECISIONS.md §6).
- * `master_mono` / `master_balance` are hidden but readable settings keys; unset keys mean the default (off /
+ * `master_mono` (and Samsung's `mono_audio`) / `master_balance` are hidden but readable settings keys; unset keys mean the default (off /
  * centre). Anything that throws is reported as `null` (unknown).
  */
 class AndroidEnvironmentChecks @Inject constructor(
@@ -32,10 +32,19 @@ class AndroidEnvironmentChecks @Inject constructor(
         )
     }
 
-    private fun readMono(): Boolean? = try {
-        Settings.System.getInt(context.contentResolver, "master_mono", 0) == 1
-    } catch (_: Exception) {
-        null
+    /** AOSP `master_mono`, or Samsung's `mono_audio` (One UI keeps its own key). Either one on means mono. */
+    private fun readMono(): Boolean? {
+        val aosp: Boolean? = try {
+            Settings.System.getInt(context.contentResolver, "master_mono", 0) == 1
+        } catch (_: Exception) {
+            null
+        }
+        val samsung = try {
+            Settings.System.getInt(context.contentResolver, "mono_audio", 0) == 1
+        } catch (_: Exception) {
+            false // absent or unreadable: not mono
+        }
+        return if (samsung) true else aosp
     }
 
     private fun readBalance(): Float? = try {

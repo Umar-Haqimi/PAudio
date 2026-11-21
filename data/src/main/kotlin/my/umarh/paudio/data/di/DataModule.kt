@@ -27,6 +27,8 @@ import my.umarh.paudio.data.repo.RoomHearingTestRepository
 import my.umarh.paudio.data.repo.RoomListenerRepository
 import my.umarh.paudio.data.repo.RoomPreferenceTestRepository
 import my.umarh.paudio.data.repo.RoomProfileRepository
+import my.umarh.paudio.data.tx.DataTransactions
+import my.umarh.paudio.data.tx.RoomDataTransactions
 import my.umarh.paudio.data.settings.DataStoreSettingsRepository
 import my.umarh.paudio.data.settings.SettingsRepository
 
@@ -62,5 +64,6 @@ abstract class DataBindsModule {
     @Binds abstract fun profiles(impl: RoomProfileRepository): ProfileRepository
     @Binds abstract fun hearingTests(impl: RoomHearingTestRepository): HearingTestRepository
     @Binds abstract fun preferenceTests(impl: RoomPreferenceTestRepository): PreferenceTestRepository
+    @Binds abstract fun transactions(impl: RoomDataTransactions): DataTransactions
     @Binds abstract fun settings(impl: DataStoreSettingsRepository): SettingsRepository
 }

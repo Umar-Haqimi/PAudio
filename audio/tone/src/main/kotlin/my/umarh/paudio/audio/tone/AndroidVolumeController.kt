@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.database.ContentObserver
 import android.media.AudioAttributes
+import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
@@ -36,7 +37,7 @@ import javax.inject.Singleton
 class AndroidVolumeController(
     private val context: Context,
     private val deviceType: () -> Int,
-) : VolumeController {
+) : VolumeController, DeviceAwareVolume {
     @Inject constructor(@ApplicationContext context: Context) : this(context, { currentDeviceType(context) })
 
     private val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -63,6 +64,45 @@ class AndroidVolumeController(
         val effective = index()
         filter.onSelfWrite(effective)
         return effective
+    }
+
+    private val deferred = DeferredRestore()
+    private var deviceCallback: AudioDeviceCallback? = null
+
+    override fun outputDeviceKey(): Int? = try {
+        deviceType()
+    } catch (_: RuntimeException) {
+        null
+    }
+
+    @Synchronized
+    override fun deferRestore(deviceKey: Int, index: Int) {
+        deferred.defer(deviceKey, index)
+        if (deviceCallback != null) return
+        val cb = object : AudioDeviceCallback() {
+            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) = tryDeferred()
+            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) = tryDeferred()
+        }
+        deviceCallback = cb
+        am.registerAudioDeviceCallback(cb, Handler(Looper.getMainLooper()))
+    }
+
+    @Synchronized
+    override fun cancelDeferredRestore() {
+        deferred.cancel()
+        stopDeviceCallback()
+    }
+
+    @Synchronized
+    private fun tryDeferred() {
+        val idx = deferred.onDevice(outputDeviceKey()) ?: return
+        stopDeviceCallback()
+        setIndex(idx)
+    }
+
+    private fun stopDeviceCallback() {
+        deviceCallback?.let { am.unregisterAudioDeviceCallback(it) }
+        deviceCallback = null
     }
 
     override fun indexDb(i: Int): Float? {

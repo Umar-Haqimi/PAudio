@@ -79,13 +79,13 @@ data class ResultsRoute(val testId: Long)
  * @param onSeeHealth opens Hearing health for (profileId, testId).
  * @param onPreferenceTest starts the A/B preference test for [profileId] (chosen in the exit dialog).
  * @param onDone leaves Results (also the "Not now" answer of the exit dialog).
- * @param onRedoTest optional: offered only when the Quick test looks unreliable; leaves Results without the exit dialog.
+ * @param onRedoTest optional (called with the test's profileId): offered only when the Quick test looks unreliable; leaves Results without the exit dialog.
  */
 fun NavGraphBuilder.resultsScreen(
     onSeeHealth: (profileId: Long, testId: Long) -> Unit,
     onPreferenceTest: (profileId: Long) -> Unit,
     onDone: () -> Unit,
-    onRedoTest: (() -> Unit)? = null,
+    onRedoTest: ((profileId: Long) -> Unit)? = null,
 ) {
     composable<ResultsRoute> {
         ResultsScreen(onSeeHealth, onPreferenceTest, onDone, onRedoTest)
@@ -97,7 +97,7 @@ internal fun ResultsScreen(
     onSeeHealth: (profileId: Long, testId: Long) -> Unit,
     onPreferenceTest: (profileId: Long) -> Unit,
     onDone: () -> Unit,
-    onRedoTest: (() -> Unit)?,
+    onRedoTest: ((profileId: Long) -> Unit)?,
     viewModel: ResultsViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
@@ -152,7 +152,7 @@ internal fun ResultsScreenContent(
     onSeeHealth: (profileId: Long, testId: Long) -> Unit,
     onPreferenceTest: (profileId: Long) -> Unit,
     onDone: () -> Unit,
-    onRedoTest: (() -> Unit)? = null,
+    onRedoTest: ((profileId: Long) -> Unit)? = null,
 ) {
     var showExit by rememberSaveable { mutableStateOf(false) }
     val content = (ui as? ResultsUiState.Content)?.content
@@ -270,7 +270,7 @@ private fun ResultsBody(
     onRetryAb: () -> Unit,
     onSeeHealth: () -> Unit,
     onDone: () -> Unit,
-    onRedoTest: (() -> Unit)?,
+    onRedoTest: ((profileId: Long) -> Unit)?,
 ) {
     val locale = LocalConfiguration.current.locales[0]
     Column(
@@ -357,14 +357,14 @@ private fun EarSummary(name: String, r: EarResult, locale: Locale) {
 }
 
 @Composable
-private fun NotesCard(content: ResultsContent, onRedoTest: (() -> Unit)?) {
+private fun NotesCard(content: ResultsContent, onRedoTest: ((profileId: Long) -> Unit)?) {
     val rel = content.reliability
     if (!rel.hasNote && !content.asymmetry && !content.anyCensored) return
     SectionCard(title = stringResource(R.string.results_notes_title)) {
         if (rel.unreliable) {
             Note(StatusTone.Warn, PAudioIcons.Warning, stringResource(R.string.results_unreliable_chip), stringResource(R.string.results_unreliable_body))
             if (rel.offerRedo && onRedoTest != null) {
-                OutlinedButton(onClick = onRedoTest, modifier = Modifier.heightIn(min = 48.dp)) {
+                OutlinedButton(onClick = { onRedoTest(content.profileId) }, modifier = Modifier.heightIn(min = 48.dp)) {
                     Text(stringResource(R.string.results_redo))
                 }
             }
