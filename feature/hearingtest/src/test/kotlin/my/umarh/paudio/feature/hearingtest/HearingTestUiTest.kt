@@ -30,7 +30,7 @@ import org.junit.runner.RunWith
 import java.util.concurrent.Executors
 import kotlin.random.Random
 
-private class RecordingActions : HearingTestActions {
+internal class RecordingActions : HearingTestActions {
     val calls = mutableListOf<String>()
     override fun chooseMode(mode: TestMode) { calls += "chooseMode:$mode" }
     override fun backToModeChoice() { calls += "backToModeChoice" }
@@ -50,6 +50,8 @@ private class RecordingActions : HearingTestActions {
     override fun keepGoing() { calls += "keep" }
     override fun abort() { calls += "abort" }
     override fun tryAgain() { calls += "tryAgain" }
+    override fun retrySave() { calls += "retrySave" }
+    override fun saveToActiveProfile() { calls += "saveToActive" }
 }
 
 @RunWith(AndroidJUnit4::class)
@@ -199,7 +201,8 @@ class HearingTestUiTest {
         rule.waitUntil(10_000) { pumpMain(); rule.onAllNodes(hasTestTag(Tags.START) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag(Tags.START).performScrollTo().performClick()
         repeat(3) { n ->
-            rule.waitUntil(30_000) { pumpMain(); rule.onAllNodes(hasTestTag(Tags.HEAR) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+            // The buttons stay enabled between trials (no enabled toggling at onset); wait for an open trial.
+            rule.waitUntil(30_000) { pumpMain(); vm.currentSession?.responseArmed == true && rule.onAllNodes(hasTestTag(Tags.HEAR) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
             rule.onNodeWithTag(Tags.HEAR).performClick()
             rule.waitUntil(30_000) { pumpMain(); signals.get() > n }
         }

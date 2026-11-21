@@ -117,7 +117,20 @@ sealed interface SessionState {
 
     /** Terminal; emitted only after cleanup, like [Finished]. */
     data class Aborted(val reason: AbortReason) : SessionState
+
+    /**
+     * The test finished but could not be saved. Emitted after cleanup (no audio, no bypass token); the results are
+     * kept in memory so the user can retry ([TestSession.retrySave]) or leave (discarding them).
+     */
+    data class SaveFailed(
+        /** The profile the test was started for was deleted meanwhile: saving needs an explicit choice. */
+        val profileMissing: Boolean,
+    ) : SessionState
 }
+
+/** No more audio, volume, focus or bypass is held in this state (the session's cleanup has run). */
+internal val SessionState.isAfterCleanup: Boolean
+    get() = this is SessionState.Finished || this is SessionState.Aborted || this is SessionState.SaveFailed
 
 /** One-off signals for haptics / accessibility, emitted only AFTER the stimulus has stopped (SPEC §2.2 #20). */
 sealed interface SessionSignal {

@@ -165,6 +165,37 @@ class RepositoryTestStoreTest {
     }
 
     @Test
+    fun aDeletedRequestedProfileFailsExplicitlyAndCreatesNothing() = runBlocking {
+        var thrown: Throwable? = null
+        try {
+            store.save(request(99))
+        } catch (e: ProfileMissingException) {
+            thrown = e
+        }
+        assertThat(thrown).isNotNull()
+        assertThat(tests.count).isEqualTo(0)
+        assertThat(listeners.rows).isEmpty()
+        assertThat(headsets.rows).isEmpty()
+        assertThat(profiles.rows).isEmpty()
+        // the explicit "save to the current profile" choice goes to the active listener
+        store.save(request(99).withoutRequestedProfile())
+        assertThat(tests.count).isEqualTo(1)
+        assertThat(profiles.rows.single().listenerId).isEqualTo(1L)
+    }
+
+    @Test
+    fun listenerForIsTheRequestedProfilesListenerElseTheActiveOne() = runBlocking {
+        assertThat(store.listenerFor(null)).isNull() // nobody exists yet
+        store.save(request(null)) // creates "Me" (1) and its profile (1)
+        assertThat(store.listenerFor(null)).isEqualTo(1L)
+        val other = listeners.create("Sam")
+        profiles.create(other, null, "Sam any")
+        val samProfile = profiles.rows.last().id
+        assertThat(store.listenerFor(samProfile)).isEqualTo(other)
+        assertThat(store.listenerFor(12345)).isNull()
+    }
+
+    @Test
     fun speakerAndNoOutputAreNeverTested() = runBlocking {
         assertThat(store.check(FakeOutputDevices.SPEAKER, null)).isEqualTo(TargetCheck.NotProcessable)
         assertThat(store.check(null, null)).isEqualTo(TargetCheck.NotProcessable)

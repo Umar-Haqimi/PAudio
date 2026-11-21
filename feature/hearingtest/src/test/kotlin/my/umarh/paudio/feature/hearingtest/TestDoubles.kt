@@ -78,6 +78,10 @@ interface HookedTone : InterruptibleToneOutput {
  * [InterruptibleToneOutput] double. Asserts P0 on every call (`violations`), records what was played and, when
  * [timed], takes the stimulus' duration in (virtual or real) time so a cancellation can hit it mid-stimulus.
  * [onPlay] runs when a stimulus starts (non-suspending): the simulated listener answers from there.
+ *
+ * `playing` follows the `StreamEngine` semantics: true while a [play] stimulus is in progress (a silent catch
+ * buffer included), false again before [play] returns, and NEVER set by [playSilence] (the engine schedules explicit
+ * silence as a non-audible segment). `StreamEngineTest::explicitSilenceNeverSetsPlaying` pins the real side.
  */
 class ScriptedTone(
     private val bypassHeld: () -> Boolean,
@@ -165,10 +169,15 @@ class FakeFocus : FocusSource {
     val abandoned = AtomicInteger(0)
     val requests = AtomicInteger(0)
     @Volatile var grant = true
+
+    /** A focus request is registered (granted or not) and not abandoned since. */
+    @Volatile var held = false
+        private set
     private val flow = MutableSharedFlow<FocusEvent>(extraBufferCapacity = 16)
 
     override fun request(): Boolean {
         requests.incrementAndGet()
+        held = true
         return grant
     }
 
@@ -176,6 +185,7 @@ class FakeFocus : FocusSource {
 
     override fun abandon() {
         abandoned.incrementAndGet()
+        held = false
     }
 
     override val events: kotlinx.coroutines.flow.Flow<FocusEvent> = flow
@@ -185,8 +195,9 @@ class FakeFocus : FocusSource {
     }
 }
 
-class FakePlatform(var rate: Int = 48_000) : TestPlatform {
+class FakePlatform(var rate: Int = 48_000, var minIndex: Int = 0) : TestPlatform {
     override fun outputSampleRate() = rate
+    override fun minVolumeIndex() = minIndex
     override fun appVersion() = "1.2.3-test"
     override fun defaultListenerName() = "Me"
     override fun defaultProfileName(headsetName: String) = headsetName.ifBlank { "My headphones" }
@@ -196,12 +207,19 @@ class FakeStore : TestStore {
     val saved = CopyOnWriteArrayList<SaveRequest>()
     @Volatile var check: TargetCheck = TargetCheck.Ok
     @Volatile var failSave = false
+    @Volatile var profileMissing = false
+    @Volatile var listener: Long? = 1L
+    val attempts = AtomicInteger(0)
 
     override suspend fun check(device: OutputDevice?, requestedProfileId: Long?): TargetCheck =
         if (device == null || !device.isProcessable) TargetCheck.NotProcessable else check
 
+    override suspend fun listenerFor(requestedProfileId: Long?): Long? = listener
+
     override suspend fun save(request: SaveRequest): Long {
+        attempts.incrementAndGet()
         if (failSave) error("disk full")
+        if (profileMissing && request.requestedProfileId != null) throw ProfileMissingException()
         saved += request
         return 41L + saved.size
     }

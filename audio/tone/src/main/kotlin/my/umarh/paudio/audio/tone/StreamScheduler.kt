@@ -4,8 +4,12 @@ import my.umarh.paudio.core.model.StereoBuffer
 import kotlin.math.PI
 import kotlin.math.cos
 
-/** One queued stimulus. Frame positions are absolute stream positions (frames since the stream started). */
-class Stimulus(val buffer: StereoBuffer) {
+/**
+ * One queued stimulus. Frame positions are absolute stream positions (frames since the stream started).
+ * [audible] is false for an explicit silent segment (a timed gap): it is scheduled like any stimulus but never
+ * counts as "playing".
+ */
+class Stimulus(val buffer: StereoBuffer, val audible: Boolean = true) {
     /** Stream frame at which the first sample was emitted, or -1 while still queued. */
     @Volatile var startFrame: Long = -1L
         internal set

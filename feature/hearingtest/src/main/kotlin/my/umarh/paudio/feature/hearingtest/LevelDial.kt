@@ -32,7 +32,8 @@ import androidx.compose.ui.unit.dp
  *
  * Haptics (SPEC "haptic tick per detent" vs trap #20 "no haptics during a stimulus"): the pulsed tone loops, so a
  * stimulus is audible most of the time. A detent crossed while a pulse plays is remembered and its single tick is
- * fired when the next silent gap starts ([stimulusPlaying] false); ticks never coincide with a pulse. DECISIONS §20.
+ * fired when the next silent gap starts ([stimulusPlaying] false: the session plays each gap as its own silent
+ * buffer, so the flag drops for the whole gap); ticks never coincide with a pulse. DECISIONS §23, §27.
  */
 @Composable
 internal fun LevelDial(
@@ -92,13 +93,25 @@ internal fun LevelDial(
                 val detentPx = ((size.height - 2 * 24.dp.toPx()) / (maxPosition - minPosition).coerceAtLeast(1))
                     .coerceAtLeast(1f)
                 var carry = 0f
-                detectVerticalDragGestures(onDragStart = { carry = 0f }) { change, dragAmount ->
+                // Accumulated locally: several drag events can arrive before the new position has been recomposed
+                // into `currentPosition`, and adding to the stale value would lose detents.
+                var dragPosition = currentPosition
+                detectVerticalDragGestures(
+                    onDragStart = {
+                        carry = 0f
+                        dragPosition = currentPosition
+                    },
+                ) { change, dragAmount ->
                     change.consume()
                     carry += -dragAmount // finger up = louder
                     val steps = (carry / detentPx).toInt()
                     if (steps != 0) {
                         carry -= steps * detentPx
-                        currentOnChange((currentPosition + steps).coerceIn(minPosition, maxPosition))
+                        val next = (dragPosition + steps).coerceIn(minPosition, maxPosition)
+                        if (next != dragPosition) {
+                            dragPosition = next
+                            currentOnChange(next)
+                        }
                     }
                 }
             },

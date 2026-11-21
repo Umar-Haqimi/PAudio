@@ -11,12 +11,18 @@ import my.umarh.paudio.data.settings.SettingsRepository
 import javax.inject.Inject
 
 /**
- * Profile resolution + persistence of a finished test (DECISIONS §20).
+ * Profile resolution + persistence of a finished test (DECISIONS §23, §27).
  *
  * `HearingTestRoute(profileId = null)` means "the active listener's profile for the headset that was connected when
  * the test started": the listener (and a default one if none exists yet), the headset row and the profile are created
  * HERE, at save time, so an aborted test never leaves empty rows behind. Speakers and other non-processable outputs
  * never get a profile ([check] blocks them before the test starts).
+ *
+ * A requested profile that was deleted during the test is NOT silently replaced by the active listener's profile
+ * (it may belong to another person): [save] throws [ProfileMissingException] and the user decides.
+ *
+ * Not yet one transaction: the listener / headset / profile inserts and the test save are separate writes (a
+ * `:data` transaction API is being added separately and will be wired here).
  */
 class RepositoryTestStore @Inject constructor(
     private val listeners: ListenerRepository,
@@ -46,8 +52,18 @@ class RepositoryTestStore @Inject constructor(
         )
     }
 
+    override suspend fun listenerFor(requestedProfileId: Long?): Long? {
+        if (requestedProfileId != null) return profiles.get(requestedProfileId)?.profile?.listenerId
+        val active = settings.activeListenerId.first()
+        if (active != null && listeners.get(active) != null) return active
+        return listeners.observeAll().first().firstOrNull()?.id
+    }
+
     private suspend fun resolveProfileId(request: SaveRequest): Long {
-        request.requestedProfileId?.let { id -> if (profiles.get(id) != null) return id }
+        request.requestedProfileId?.let { id ->
+            if (profiles.get(id) != null) return id
+            throw ProfileMissingException()
+        }
         val device = request.device
         val listenerId = activeListenerId()
         profiles.resolveForHeadset(listenerId, device.headsetKey)?.let { return it.id }

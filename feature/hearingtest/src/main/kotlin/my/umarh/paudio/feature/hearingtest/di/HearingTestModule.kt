@@ -32,6 +32,11 @@ class AndroidTestPlatform @Inject constructor(
         return am.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()?.takeIf { it > 0 } ?: 48_000
     }
 
+    override fun minVolumeIndex(): Int {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        return am.getStreamMinVolume(AudioManager.STREAM_MUSIC)
+    }
+
     override fun appVersion(): String = try {
         context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "unknown"
     } catch (_: Exception) {
