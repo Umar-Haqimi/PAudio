@@ -12,8 +12,10 @@ import com.google.common.truth.Truth.assertThat
 /**
  * M12 accessibility audit helper (identical copy in each feature module's tests; DECISIONS §26):
  * every node with a click action must expose a label a screen reader can speak (text, content description, an
- * editable value or the click label) and a layout size of at least 48 dp x 48 dp. Material components pad
- * themselves up to `minimumInteractiveComponentSize` (48 dp) in layout, so the node size is the touch target.
+ * editable value or the click label) and a layout size of at least 48 dp x 48 dp. The check is deliberately
+ * strict: it measures the clickable node itself, not its touch target. A default Material `IconButton` (40 dp) already
+ * gets a 48 dp touch target from `minimumInteractiveComponentSize()` touch-bounds expansion, so a node that fails
+ * here is not necessarily untappable; the screens still size such buttons to 48 dp so that the visible bounds match.
  * The unclipped `size` is used because `touchBoundsInRoot` is empty for nodes scrolled out of view.
  */
 internal fun SemanticsNodeInteractionsProvider.assertClickablesAreLabelledAndLargeEnough(
