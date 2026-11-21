@@ -269,4 +269,13 @@ class ProfileDetailViewModelTest {
         assertThat(argb ushr 24).isEqualTo(0xFF)
         assertThat(androidx.compose.ui.graphics.Color(argb).toArgb()).isEqualTo(argb)
     }
+
+    @Test
+    fun seedColor_isTheSharedRawHlFunctionOfTheButterflyInput() {
+        val th = fullThresholds(1)
+        val b = ProfileMeasure.butterfly(th)!!
+        val shared = my.umarh.paudio.designsystem.ProfileSeedColor
+            .fromRawHl(b.leftHl.map { it!!.toDouble() }, b.rightHl.map { it!!.toDouble() }, b.freqsHz).toArgb()
+        assertThat(ProfileMeasure.seedColor(th)).isEqualTo(shared)
+    }
 }

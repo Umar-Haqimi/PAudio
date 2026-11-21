@@ -164,3 +164,11 @@ Pending reviews: Opus re-verify of M7a P0 fixes; Sonnet review of M10. See `docs
 - `:app`: `AppViewModel` (start destination from onboarding flag, theme seed from the active profile, `LaunchRequests` routing, app-level "Which headphones are these?" dialog from `EngineController.whichHeadphones`), `AppRoot`.
 - Each feature talks to `EngineController` through a small feature-local interface (`HomeEngine`, `SettingsEngine`, …) bound in a Hilt module, so ViewModels are tested with plain fakes.
 - Tests: onboarding 11, home 19, profiles 38, settings 5 (+ forbidden-word string scans in each module). `verifyFeatureBoundaries` passes.
+
+### M8b/M9b review fixes
+- One measurement helper: `core/audiometry` `measureThresholds(RawThreshold)` (pure Kotlin) + `:data` `List<ThresholdEntity>.measure()`. `HomeViewModel.butterfly`, `ProfileMeasure.butterfly/seedColor`, `ResultsMapper.measure` and `HealthMapper.measure` now delegate (behaviour unchanged: all four were identical; raw, unclamped HL).
+- One seed-colour function: `ProfileSeedColor.fromRawHl` (raw HL). Results (tested profile, even if not the active one) and `AppViewModel.seedSync` (themed profile) both use it, so they agree; Results previously used display-clamped HL. `seedOverridden` respected by both.
+- `ResultsViewModel.prepare()` ERROR branch now releases the player and bypass token; retry re-acquires.
+- `AppViewModel` seed sync: write wrapped in try/catch and the flow has `.catch` (class name only is logged).
+- Results copy: "high pitches" wording only when every censored point is at >= 10 kHz (`ResultsContent.beyondRangeOnlyHigh`), else neutral "Some pitches" (`results_beyond_range_any_*`).
+- Tests: Results VM (token released on clip failure + retry, seed = shared function), mapper wording gate, Profiles seed-colour consistency. No AppViewModel unit test (`:app` has no test source set).
