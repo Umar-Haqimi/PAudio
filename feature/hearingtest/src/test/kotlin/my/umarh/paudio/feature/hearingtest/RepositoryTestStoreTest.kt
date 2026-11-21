@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import my.umarh.paudio.core.model.Ear
 import my.umarh.paudio.core.model.HeadsetKey
@@ -26,6 +27,7 @@ import my.umarh.paudio.data.repo.ProfileWithHeadset
 import my.umarh.paudio.data.repo.ProfileWriteResult
 import my.umarh.paudio.data.settings.EngineMode
 import my.umarh.paudio.data.settings.SettingsRepository
+import my.umarh.paudio.data.tx.DataTransactions
 import my.umarh.paudio.testing.FakeOutputDevices
 import org.junit.Test
 
@@ -86,7 +88,14 @@ private class MemTests : HearingTestRepository {
     var lastKey: HeadsetKey? = null
     var lastTest: HearingTestEntity? = null
     var count = 0
+    var failNext = false
+    var gate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
     override suspend fun save(test: HearingTestEntity, thresholds: List<ThresholdEntity>, trials: List<TrialEntity>, headsetKey: HeadsetKey?): Long {
+        gate?.await()
+        if (failNext) {
+            failNext = false
+            error("disk full")
+        }
         lastKey = headsetKey
         lastTest = test
         return (++count).toLong()
@@ -121,13 +130,41 @@ private class MemSettings : SettingsRepository {
     override suspend fun setPersonalizationEnabled(enabled: Boolean) = Unit
 }
 
+/** In-memory "transaction": snapshots the rows and restores them when the block throws (as Room rolls back). */
+private class SnapshotTx(
+    private val listeners: MemListeners,
+    private val headsets: MemHeadsets,
+    private val profiles: MemProfiles,
+) : DataTransactions {
+    var transactions = 0
+    var open = false
+    override suspend fun <T> withTransaction(block: suspend () -> T): T {
+        transactions++
+        val l = listeners.rows.toList()
+        val h = headsets.rows.toList()
+        val p = profiles.rows.toList()
+        open = true
+        try {
+            return block()
+        } catch (e: Throwable) {
+            listeners.rows.clear(); listeners.rows += l
+            headsets.rows.clear(); headsets.rows += h
+            profiles.rows.clear(); profiles.rows += p
+            throw e
+        } finally {
+            open = false
+        }
+    }
+}
+
 class RepositoryTestStoreTest {
     private val listeners = MemListeners()
     private val headsets = MemHeadsets()
     private val profiles = MemProfiles(headsets)
     private val tests = MemTests()
     private val settings = MemSettings()
-    private val store = RepositoryTestStore(listeners, profiles, headsets, tests, settings, FakePlatform())
+    private val tx = SnapshotTx(listeners, headsets, profiles)
+    private val store = RepositoryTestStore(listeners, profiles, headsets, tests, settings, FakePlatform(), tx)
 
     private fun request(profileId: Long?, device: OutputDevice = FakeOutputDevices.BLUETOOTH_BUDS) = SaveRequest(
         profileId, device,
@@ -162,6 +199,44 @@ class RepositoryTestStoreTest {
         assertThat(store.check(FakeOutputDevices.BLUETOOTH_BUDS, 99)).isEqualTo(TargetCheck.ProfileMissing)
         store.save(request(1, FakeOutputDevices.BLUETOOTH_BUDS))
         assertThat(tests.lastTest!!.profileId).isEqualTo(1L)
+    }
+
+    @Test
+    fun listenerHeadsetProfileAndTestAreSavedInOneTransaction_allOrNothing() = runBlocking {
+        tests.failNext = true
+        var failed = false
+        try {
+            store.save(request(null))
+        } catch (e: IllegalStateException) {
+            failed = true
+        }
+        assertThat(failed).isTrue()
+        assertThat(tx.transactions).isEqualTo(1)
+        // rolled back: no orphan listener / headset / profile, and the active-listener setting was not written
+        assertThat(listeners.rows).isEmpty()
+        assertThat(headsets.rows).isEmpty()
+        assertThat(profiles.rows).isEmpty()
+        assertThat(settings.active.value).isNull()
+        // a retry creates everything once, in one transaction, and only then stores the active listener
+        store.save(request(null))
+        assertThat(tx.transactions).isEqualTo(2)
+        assertThat(listeners.rows).hasSize(1)
+        assertThat(profiles.rows).hasSize(1)
+        assertThat(settings.active.value).isEqualTo(1L)
+        assertThat(tests.count).isEqualTo(1)
+    }
+
+    @Test
+    fun aSaveThatIsCancelledMidwayStillCompletes() = runBlocking {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        tests.gate = gate
+        val job = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            store.save(request(null)) // suspends inside the transaction, at the test row
+        }
+        job.cancel() // the user leaves the screen
+        gate.complete(Unit)
+        job.join()
+        assertThat(tests.count).isEqualTo(1) // NonCancellable: the transaction ran to the end
     }
 
     @Test

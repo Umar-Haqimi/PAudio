@@ -694,7 +694,40 @@ Fixes for the M9a review (HANDOFF §1.2). SHOULD-FIX 4 (VolumeLogic) and 7 (nav 
 - **End-of-test prompt (SHOULD-FIX 6), choice: save.** If the end-of-test "answers looked like guesses" prompt is unanswered when the 5-min pause timeout fires, the finished test is saved with `reliable = false` (the same as "Keep these results") instead of being discarded. Releasing audio and the token during the prompt was rejected: "Redo" would then need a new stream, token and calibration.
 - **Quick buttons stay enabled (SHOULD-FIX 8)**; the session ignores taps between trials.
 - **Save failure (NIT).** A failed save no longer aborts: the session publishes `SaveFailed(profileMissing)` after the cleanup and keeps the `SaveRequest`; "Try saving again" calls `retrySave()` (no audio or bypass involved; concurrent calls ignored). `AbortReason.SAVE_FAILED` is no longer produced.
-- **Deleted profile (NIT).** `RepositoryTestStore.save` throws `ProfileMissingException` for a requested profile that no longer exists instead of silently saving to the active listener; the SaveFailed screen offers "Save to the current profile" (`retrySave(useActiveProfile = true)`, an explicit choice). The single-transaction part of this NIT is wired separately (`:data` transaction API).
+- **Deleted profile (NIT).** `RepositoryTestStore.save` throws `ProfileMissingException` for a requested profile that no longer exists instead of silently saving to the active listener; the SaveFailed screen offers "Save to the current profile" (`retrySave(useActiveProfile = true)`, an explicit choice). The listener / headset / profile inserts and the test save now run in one `DataTransactions.withTransaction` (§28.3) inside `NonCancellable`; the DataStore active-listener id is written only after the commit, so a rollback never leaves it pointing at a missing row (`RepositoryTestStoreTest::listenerHeadsetProfileAndTestAreSavedInOneTransaction_allOrNothing`, `::aSaveThatIsCancelledMidwayStillCompletes`).
 - **Other NITs.** Quick trials end with an unconditional `stopCurrent()`; stream losses count in a row (reset by every completed unit, still max 3); ON_STOP during a configuration change (`isChangingConfigurations`) no longer pauses; `LevelDial` accumulates drag steps locally (no detents lost when events batch); `CalibrationSession` gets the real stream minimum (`TestPlatform.minVolumeIndex()` = `getStreamMinVolume`); stale "DECISIONS §20" references now read §23. `resumeRestartsOnlyTheInterruptedPoint` always checks the restarted point's start level (other-ear rule included) and that exactly the pre-pause presentations were dropped.
 - **Spec note (not changed).** SPEC "the hear button softly pulses while a stimulus plays": a pulse locked to the AUDIO would let the user answer from the visuals and would reveal catch trials. The pulse follows the presentation window instead (catch trials pulse identically), which carries no information about audibility. Flagged for the spec owner.
 - **Tests added.** `ReviewFixesTest` (one per finding), `Trap20SessionTest`, `Trap20UiTest`, `HearingTestA11yTest` (+ `A11yAudit` copy), VM double-tap / Try-again gate tests, `RepositoryTestStoreTest` deleted-profile / `listenerFor`, `StreamEngineTest` silence and pulse/gap tests, `AudioTrackToneOutputTest::oneSinkForManyStimuliGapsStopsAndRepeatedOpens`; trap-5 open/close counts in the session cleanup asserts.
+
+## 28. Polish fixes (session 3)
+
+### 28.1 Volume restore on the wrong device (HANDOFF SHOULD-FIX 4)
+- `:audio:tone` `VolumeLock` stays source-compatible (`VolumeLock(controller)`). When the controller also implements the new `DeviceAwareVolume` (`AndroidVolumeController` does), the lock remembers the media output device (`AudioDeviceInfo.TYPE_*`) when it first locks.
+- `release()` writes the original index only if the output is still that device. If it is not (headset unplugged mid-test), nothing is written (STREAM_MUSIC keeps one index per device, so a write would hit the speaker) and the restore is handed to `DeviceAwareVolume.deferRestore(deviceKey, index)`. `AndroidVolumeController` applies it from an `AudioDeviceCallback` once the start device is current again, then unregisters the callback. A later `lock()` cancels a pending restore (the new lock reads the live index as the new original).
+- On reconnect the same safety rule as `release()` applies: if the start device's index is not the locked one and is below the original (lowered by the user or CSD meanwhile), it is NOT raised (`DeferredOutcome.Skip`). The callback retries once after 500 ms, because it can fire before routing switches; a resolution only ever happens when the current output key equals the start device, so it never writes on the speaker.
+- Limits: device identity is the device type, not the individual device (two different USB headsets look alike). The deferred restore lives in memory only (process death drops it, the same gap as HANDOFF §1.3).
+- Pure logic is in `DeferredRestore`; tests in `VolumeLogicTest`.
+
+### 28.2 Results "Test again" keeps the profile (SHOULD-FIX 7)
+- `ResultsRoute`'s `onRedoTest` is now `((profileId: Long) -> Unit)?`; the Results screen passes the displayed test's `profileId`, and `PAudioNavHost` navigates to `HearingTestRoute(profileId = it)`. `:feature:hearingtest` is untouched.
+
+### 28.3 `:data` transaction API
+```kotlin
+package my.umarh.paudio.data.tx
+interface DataTransactions { suspend fun <T> withTransaction(block: suspend () -> T): T }
+class RoomDataTransactions @Inject constructor(db: PAudioDatabase) : DataTransactions   // Room withTransaction
+```
+- Bound in `DataBindsModule` (`@Binds DataTransactions`), so any `@Inject` class can take `DataTransactions`.
+- Everything done through the `:data` repositories inside the block commits together or is rolled back if the block throws (cancellation included). Repository methods that open their own transaction join the outer one. Keep the block short: no audio, UI or network work inside.
+- `AndroidPreferenceData.save` now writes the `PreferenceTest` and the profile settings in one transaction, still wrapped in `NonCancellable` (the transaction must finish when the screen is left).
+- Intended next adopter: `RepositoryTestStore` in `:feature:hearingtest` (listener, headset and profile inserts plus the test save, HANDOFF §1.2 NIT). Not done here (other owner).
+- Tests: `DataTransactionsTest` (commit; rollback on exception).
+
+### 28.4 Smaller items
+- Preference top-bar back button is 48 dp (`Modifier.size(48.dp)`), as Results and Health.
+- `:app` now has a unit-test source set. To make the `AppViewModel` seed-sync testable without the concrete `EngineController`, `seedSync` and `pickThemeProfile` moved out of the class to `internal` top-level functions (behaviour unchanged); `AppViewModelSeedSyncTest` covers them.
+- `AndroidEnvironmentChecks.readMono` also reads Samsung's `Settings.System` `mono_audio` (try/catch, absent = off); mono is reported if either key is on. Robolectric test added. (AOSP key is `master_mono`.)
+- `tools/golden/gen_all.py --check` is implemented (see `docs/VECTORS.md`); the committed vectors match a fresh regeneration.
+- `LICENSE` was compared byte for byte with https://www.gnu.org/licenses/gpl-3.0.txt: identical, no change.
+- Manifest `<queries>` (merged): one entry, `MAIN`/`LAUNCHER`, declared in `:service`. It is used only to show the app label of the app that owns an audio session in the notification (`ServicePlatform.kt` `getApplicationLabel`); no label leaves the device. It is broader than strictly necessary (it lets the app enumerate launcher apps) but justified by that feature, and a missing entry falls back to the package name. Not changed. No other `<queries>`, no `QUERY_ALL_PACKAGES`.
+- Environment note: AGP auto-installed a partial `build-tools;36.0.0` into the shared SDK during this session, which broke the build until the directory was removed (`build-tools;37.0.0` is the one that works).

@@ -15,7 +15,10 @@ Written in M0 (2026-11-20); refreshed in M13 to match the committed files and ge
 python -m venv .venv && . .venv/bin/activate && pip install numpy scipy
 python tools/golden/gen_all.py --out core                 # writes core/*/src/test/resources/golden/*.json
 ```
-`--check` (regenerate to a temp dir and diff against the committed files) was planned but is **not implemented**; to check for drift, regenerate and look at `git diff` on the JSON files.
+`--check` regenerates every set into a temp directory (mirroring the repo layout, so set 4 can read the shipped clip LTAS) and diffs it against the committed files; it exits 1 on any mismatch, missing file or committed file with no generator. Structure, strings, integers and booleans must match exactly; floats compare with `--rtol` (default 1e-9) / `--atol` (default 1e-12) so that numpy/scipy build differences do not cause false alarms. The `python`/`numpy`/`scipy` version stamps are ignored. `--only set_3_pchip ...` restricts the check to some sets.
+```bash
+python tools/golden/gen_all.py --check                    # run from the repo root; "golden vectors match" = no drift
+```
 `gen_all.py` discovers `tools/golden/sets/set_*.py` automatically (`set_1_rbj`, `set_2_kweight`, `set_3_pchip`, `set_4_loudness`, `set_5a_measurement`, `set_5c_curve`, `set_6_dpmap`, `set_7_stimulus`, `set_8_hw`, `set_9_preference`; shared helpers in `tools/golden/common.py`); each exposes `generate(core_root)`. `--only <module name>` regenerates a subset, e.g. `--only set_6_dpmap`. Python ≥ 3.11, numpy ≥ 2, scipy ≥ 1.13 (the M0 research machine had numpy 2.5.3 / scipy 1.18.1). Dev-only; nothing in `tools/golden/` is shipped. The demo-clip LTAS files (`audio/playback/src/main/assets/demo/*.ltas.json`) come from `tools/assets/ltas.py`, not from `gen_all.py`; set 4 uses them.
 
 ## The sets (the nine from SPEC §7.1, plus the curve set 5c)

@@ -68,7 +68,7 @@ fun PAudioNavHost(startDestination: Any, launchRoute: String?, onLaunchRouteHand
             onPreferenceTest = { profileId -> nav.navigate(PreferenceRoute(profileId)) },
             onDone = { nav.popBackStack() },
             // Leaves Results (no exit dialog) and starts a fresh test; the new Results replaces this one.
-            onRedoTest = { nav.navigate(HearingTestRoute()) { popUpTo<ResultsRoute> { inclusive = true } } },
+            onRedoTest = { profileId -> nav.navigate(HearingTestRoute(profileId = profileId)) { popUpTo<ResultsRoute> { inclusive = true } } },
         )
         healthScreen(onBack = { nav.popBackStack() })
         preferenceScreen(onBack = { nav.popBackStack() })

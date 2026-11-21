@@ -35,6 +35,14 @@ class AndroidChecksRobolectricTest {
     }
 
     @Test
+    fun samsungMonoAudioSettingAlsoCountsAsMono() = runTest {
+        Settings.System.putInt(context.contentResolver, "mono_audio", 1)
+        assertThat(AndroidEnvironmentChecks(context).snapshot().mono).isTrue()
+        Settings.System.putInt(context.contentResolver, "mono_audio", 0)
+        assertThat(AndroidEnvironmentChecks(context).snapshot().mono).isFalse()
+    }
+
+    @Test
     fun noiseMeterWithoutPermissionIsEmptyAndDoesNotCrash() = runTest {
         assertThat(AndroidNoiseMeter(context).levels().toList()).isEmpty()
     }
