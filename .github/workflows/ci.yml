@@ -33,6 +33,9 @@ jobs:
       - name: Set up Gradle (with caching)
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Build-logic tests (logging guard scanner)
+        run: ./gradlew -p build-logic test --stacktrace
+
       - name: Check, assemble debug and release
         run: ./gradlew check assembleDebug :app:assembleRelease --stacktrace
 

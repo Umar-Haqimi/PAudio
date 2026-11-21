@@ -236,3 +236,7 @@ Pending reviews: Opus re-verify of M7a P0 fixes; Sonnet review of M10. See `docs
 
 ## Session 3 — polish fixes outside the hearing-test feature (DECISIONS §28)
 - VolumeLock defers the volume restore when the start device is gone (never writes to the speaker); Results "Test again" keeps the profileId; Preference back button 48 dp; `:data` `DataTransactions` + `AndroidPreferenceData.save` in one transaction; `:app` test source set with the seed-sync test; Samsung `mono_audio` read; `gen_all.py --check` (vectors verified identical); LICENSE verified byte-identical to gnu.org's `gpl-3.0.txt`; `<queries>` reviewed (justified, unchanged).
+
+## Session 3 — logging guard hardening (DECISIONS section 29)
+- `verifyNoSensitiveLogging` is now an allowlist (`LoggingScanner`: tokenising, constant text only, printStackTrace banned) with a JUnit suite in build-logic (`./gradlew -p build-logic test`, run in CI). The old denylist regex caught 1 of 14 reviewer probes.
+- DECISIONS 26.2 / 26.4 wording corrected; A11yAudit helper comment corrected (a default IconButton already has a 48 dp touch target; the strict node-size check stays).

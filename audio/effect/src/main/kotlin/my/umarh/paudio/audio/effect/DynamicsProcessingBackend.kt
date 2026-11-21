@@ -109,7 +109,7 @@ class DynamicsProcessingBackend internal constructor(
 
     private fun uoeFailure(e: UnsupportedOperationException): EffectCreationException {
         val kind = if (dpAvailable()) EffectFailureKind.CONFLICT else EffectFailureKind.CREATION_FAILED
-        Log.w(TAG, "create refused: $kind (${e.javaClass.simpleName})")
+        Log.w(TAG, "create refused (${e.javaClass.simpleName})")
         return EffectCreationException(kind, cause = e)
     }
 
