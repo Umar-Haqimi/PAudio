@@ -27,6 +27,7 @@ import my.umarh.paudio.data.repo.PreferenceTestRepository
 import my.umarh.paudio.data.repo.ProfileRepository
 import my.umarh.paudio.data.repo.ProfileSettings
 import my.umarh.paudio.data.settings.SettingsRepository
+import my.umarh.paudio.data.tx.DataTransactions
 import my.umarh.paudio.service.engine.ActiveProfile
 import my.umarh.paudio.service.engine.ActiveProfileResolver
 import my.umarh.paudio.service.engine.ProfileCurveService
@@ -99,6 +100,7 @@ internal class AndroidPreferenceData @Inject constructor(
     private val curves: ProfileCurveService,
     private val resolver: ActiveProfileResolver,
     private val settings: SettingsRepository,
+    private val tx: DataTransactions,
 ) : PreferenceData {
     override suspend fun load(profileId: Long?): PreferenceBaseline? {
         val id = profileId ?: resolveActiveProfileId() ?: return null
@@ -139,21 +141,23 @@ internal class AndroidPreferenceData @Inject constructor(
         roundsJson: String,
         settings: ProfileSettings,
     ) {
-        // Both writes finish even if the screen is left meanwhile (no transaction API in :data). personalizationOn is
-        // re-read so a toggle made while the test ran is not overwritten.
+        // One transaction (test row + profile settings), and it finishes even if the screen is left meanwhile.
+        // personalizationOn is re-read inside it so a toggle made while the test ran is not overwritten.
         withContext(NonCancellable) {
-            val current = profiles.get(profileId)?.profile?.personalizationOn ?: settings.personalizationOn
-            prefTests.save(
-                PreferenceTestEntity(
-                    profileId = profileId,
-                    startedAt = startedAt,
-                    gB = test.first,
-                    gP = test.second,
-                    gT = test.third,
-                    roundsJson = roundsJson,
-                ),
-            )
-            profiles.updateSettings(profileId, settings.copy(personalizationOn = current))
+            tx.withTransaction {
+                val current = profiles.get(profileId)?.profile?.personalizationOn ?: settings.personalizationOn
+                prefTests.save(
+                    PreferenceTestEntity(
+                        profileId = profileId,
+                        startedAt = startedAt,
+                        gB = test.first,
+                        gP = test.second,
+                        gT = test.third,
+                        roundsJson = roundsJson,
+                    ),
+                )
+                profiles.updateSettings(profileId, settings.copy(personalizationOn = current))
+            }
         }
     }
 

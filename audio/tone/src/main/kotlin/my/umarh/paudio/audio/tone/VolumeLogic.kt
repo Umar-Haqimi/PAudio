@@ -56,8 +56,75 @@ class ExternalChangeFilter(initial: Int) {
 }
 
 /**
+ * Optional capability of a [VolumeController] that knows which output device the media volume currently applies
+ * to (STREAM_MUSIC keeps a separate index per device). [VolumeLock] uses it so that it never writes the original
+ * index to the wrong device (docs/DECISIONS.md section 28).
+ */
+interface DeviceAwareVolume {
+    /** Opaque identity of the current media output (an `AudioDeviceInfo.TYPE_*`), or null if unknown. */
+    fun outputDeviceKey(): Int?
+
+    /**
+     * Restore [index] later, when the output device identified by [deviceKey] is the current one again. [lockedIndex]
+     * is the index the lock had set (null if unknown): on reconnect the same "never raise a volume that was lowered
+     * externally" rule as [VolumeLock.release] applies (see [DeferredRestore.onDevice]).
+     */
+    fun deferRestore(deviceKey: Int, index: Int, lockedIndex: Int?)
+
+    /** Drops a deferred restore (a newer lock supersedes it). */
+    fun cancelDeferredRestore()
+}
+
+/** What to do when a deferred restore is evaluated. */
+sealed interface DeferredOutcome {
+    /** The start device is not the current output (or nothing pending): keep waiting. */
+    data object NotYet : DeferredOutcome
+
+    /** Start device is back but its volume was lowered externally: do not raise it; the restore is dropped. */
+    data object Skip : DeferredOutcome
+
+    data class Restore(val index: Int) : DeferredOutcome
+}
+
+/** One deferred volume restore: pure state machine behind [DeviceAwareVolume.deferRestore]. */
+class DeferredRestore {
+    private val lock = Any()
+    private var key: Int? = null
+    private var index: Int = 0
+    private var locked: Int? = null
+
+    val pending: Boolean get() = synchronized(lock) { key != null }
+
+    fun defer(deviceKey: Int, idx: Int, lockedIndex: Int?) = synchronized(lock) {
+        key = deviceKey
+        index = idx
+        locked = lockedIndex
+    }
+
+    fun cancel() = synchronized(lock) { key = null }
+
+    /**
+     * [currentKey]/[currentIndex] describe the current output. Only when [currentKey] is the awaited device is the
+     * restore resolved (and cleared): [DeferredOutcome.Skip] if the index there was lowered externally
+     * (`now != locked && now < original`, the rule of [VolumeLock.release]), else [DeferredOutcome.Restore].
+     * It never resolves for any other device, so it can never yield a write while the speaker is the output.
+     */
+    fun onDevice(currentKey: Int?, currentIndex: Int): DeferredOutcome = synchronized(lock) {
+        val k = key
+        if (k == null || currentKey != k) return DeferredOutcome.NotYet
+        key = null
+        val l = locked
+        if (l != null && currentIndex != l && currentIndex < index) DeferredOutcome.Skip else DeferredOutcome.Restore(index)
+    }
+}
+
+/**
  * Pins STREAM_MUSIC to the calibrated index for the duration of a test and restores the user's original index
  * afterwards. Use [withLock] (restores in `finally`) or call [release] from your own finally block.
+ *
+ * Device safety: when the controller is [DeviceAwareVolume] and the output device at [release] is not the one the
+ * lock started on (headset unplugged mid-test), nothing is written (the speaker must never receive the headphone
+ * index); the restore is deferred until the start device is back.
  *
  * Hearing safety: [release] restores the ORIGINAL index, but never raises the volume when something else (user,
  * system, CSD auto-lowering) changed it to below the original while locked.
@@ -65,6 +132,8 @@ class ExternalChangeFilter(initial: Int) {
 class VolumeLock(private val controller: VolumeController) {
     private val lock = Any()
     private var original: Int? = null
+    private var startDevice: Int? = null
+    private val deviceAware = controller as? DeviceAwareVolume
 
     /** The index we locked to, or null when not locked. */
     @Volatile var lockedIndex: Int? = null
@@ -90,7 +159,11 @@ class VolumeLock(private val controller: VolumeController) {
 
     /** Remembers the original index (first call only), sets [index]; returns the effective (read-back) index. */
     fun lock(index: Int): Int = synchronized(lock) {
-        if (original == null) original = controller.index()
+        if (original == null) {
+            deviceAware?.cancelDeferredRestore()
+            startDevice = deviceAware?.outputDeviceKey()
+            original = controller.index()
+        }
         val effective = controller.setIndex(index)
         lockedIndex = effective
         effective
@@ -100,13 +173,20 @@ class VolumeLock(private val controller: VolumeController) {
     fun release() {
         val orig: Int?
         val locked: Int?
+        val start: Int?
         synchronized(lock) {
             orig = original
             locked = lockedIndex
+            start = startDevice
             original = null
             lockedIndex = null
+            startDevice = null
         }
         if (orig == null) return
+        if (deviceAware != null && start != null && deviceAware.outputDeviceKey() != start) {
+            deviceAware.deferRestore(start, orig, locked)
+            return
+        }
         val now = controller.index()
         val loweredExternally = locked != null && now != locked && now < orig
         if (!loweredExternally) controller.setIndex(orig)

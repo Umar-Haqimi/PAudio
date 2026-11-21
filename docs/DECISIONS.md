@@ -675,3 +675,36 @@ Counts: **18 pinned, 1 device-only (13), 1 gap (20)**. Several pinned traps also
 ### 26.6 Findings in the excluded modules (not edited)
 - `feature/preference/.../PreferenceScreen.kt` (about line 165): the top-bar back `IconButton(onClick = requestLeave)` has no `Modifier.size(48.dp)`; it renders 40 dp (the same defect fixed in Results and Health).
 - Trap 20 has no behavioural test for "signals only after the stimulus" (see the table).
+
+## 28. Polish fixes (session 3)
+
+### 28.1 Volume restore on the wrong device (HANDOFF SHOULD-FIX 4)
+- `:audio:tone` `VolumeLock` stays source-compatible (`VolumeLock(controller)`). When the controller also implements the new `DeviceAwareVolume` (`AndroidVolumeController` does), the lock remembers the media output device (`AudioDeviceInfo.TYPE_*`) when it first locks.
+- `release()` writes the original index only if the output is still that device. If it is not (headset unplugged mid-test), nothing is written (STREAM_MUSIC keeps one index per device, so a write would hit the speaker) and the restore is handed to `DeviceAwareVolume.deferRestore(deviceKey, index)`. `AndroidVolumeController` applies it from an `AudioDeviceCallback` once the start device is current again, then unregisters the callback. A later `lock()` cancels a pending restore (the new lock reads the live index as the new original).
+- On reconnect the same safety rule as `release()` applies: if the start device's index is not the locked one and is below the original (lowered by the user or CSD meanwhile), it is NOT raised (`DeferredOutcome.Skip`). The callback retries once after 500 ms, because it can fire before routing switches; a resolution only ever happens when the current output key equals the start device, so it never writes on the speaker.
+- Limits: device identity is the device type, not the individual device (two different USB headsets look alike). The deferred restore lives in memory only (process death drops it, the same gap as HANDOFF §1.3).
+- Pure logic is in `DeferredRestore`; tests in `VolumeLogicTest`.
+
+### 28.2 Results "Test again" keeps the profile (SHOULD-FIX 7)
+- `ResultsRoute`'s `onRedoTest` is now `((profileId: Long) -> Unit)?`; the Results screen passes the displayed test's `profileId`, and `PAudioNavHost` navigates to `HearingTestRoute(profileId = it)`. `:feature:hearingtest` is untouched.
+
+### 28.3 `:data` transaction API
+```kotlin
+package my.umarh.paudio.data.tx
+interface DataTransactions { suspend fun <T> withTransaction(block: suspend () -> T): T }
+class RoomDataTransactions @Inject constructor(db: PAudioDatabase) : DataTransactions   // Room withTransaction
+```
+- Bound in `DataBindsModule` (`@Binds DataTransactions`), so any `@Inject` class can take `DataTransactions`.
+- Everything done through the `:data` repositories inside the block commits together or is rolled back if the block throws (cancellation included). Repository methods that open their own transaction join the outer one. Keep the block short: no audio, UI or network work inside.
+- `AndroidPreferenceData.save` now writes the `PreferenceTest` and the profile settings in one transaction, still wrapped in `NonCancellable` (the transaction must finish when the screen is left).
+- Intended next adopter: `RepositoryTestStore` in `:feature:hearingtest` (listener, headset and profile inserts plus the test save, HANDOFF §1.2 NIT). Not done here (other owner).
+- Tests: `DataTransactionsTest` (commit; rollback on exception).
+
+### 28.4 Smaller items
+- Preference top-bar back button is 48 dp (`Modifier.size(48.dp)`), as Results and Health.
+- `:app` now has a unit-test source set. To make the `AppViewModel` seed-sync testable without the concrete `EngineController`, `seedSync` and `pickThemeProfile` moved out of the class to `internal` top-level functions (behaviour unchanged); `AppViewModelSeedSyncTest` covers them.
+- `AndroidEnvironmentChecks.readMono` also reads Samsung's `Settings.System` `mono_audio` (try/catch, absent = off); mono is reported if either key is on. Robolectric test added. (AOSP key is `master_mono`.)
+- `tools/golden/gen_all.py --check` is implemented (see `docs/VECTORS.md`); the committed vectors match a fresh regeneration.
+- `LICENSE` was compared byte for byte with https://www.gnu.org/licenses/gpl-3.0.txt: identical, no change.
+- Manifest `<queries>` (merged): one entry, `MAIN`/`LAUNCHER`, declared in `:service`. It is used only to show the app label of the app that owns an audio session in the notification (`ServicePlatform.kt` `getApplicationLabel`); no label leaves the device. It is broader than strictly necessary (it lets the app enumerate launcher apps) but justified by that feature, and a missing entry falls back to the package name. Not changed. No other `<queries>`, no `QUERY_ALL_PACKAGES`.
+- Environment note: AGP auto-installed a partial `build-tools;36.0.0` into the shared SDK during this session, which broke the build until the directory was removed (`build-tools;37.0.0` is the one that works).

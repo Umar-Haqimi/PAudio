@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -162,7 +163,7 @@ internal fun PreferenceScreenContent(ui: PreferenceUiState, actions: PreferenceA
             TopAppBar(
                 title = { Text(stringResource(R.string.feature_preference_title), modifier = Modifier.semantics { heading() }) },
                 navigationIcon = {
-                    IconButton(onClick = requestLeave) {
+                    IconButton(onClick = requestLeave, modifier = Modifier.size(48.dp)) {
                         PAudioIcon(PAudioIcons.ArrowBack, contentDescription = stringResource(R.string.preference_back))
                     }
                 },
