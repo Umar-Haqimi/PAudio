@@ -68,6 +68,7 @@ class AndroidVolumeController(
 
     private val deferred = DeferredRestore()
     private var deviceCallback: AudioDeviceCallback? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun outputDeviceKey(): Int? = try {
         deviceType()
@@ -76,15 +77,15 @@ class AndroidVolumeController(
     }
 
     @Synchronized
-    override fun deferRestore(deviceKey: Int, index: Int) {
-        deferred.defer(deviceKey, index)
+    override fun deferRestore(deviceKey: Int, index: Int, lockedIndex: Int?) {
+        deferred.defer(deviceKey, index, lockedIndex)
         if (deviceCallback != null) return
         val cb = object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) = tryDeferred()
             override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) = tryDeferred()
         }
         deviceCallback = cb
-        am.registerAudioDeviceCallback(cb, Handler(Looper.getMainLooper()))
+        am.registerAudioDeviceCallback(cb, mainHandler)
     }
 
     @Synchronized
@@ -94,10 +95,17 @@ class AndroidVolumeController(
     }
 
     @Synchronized
-    private fun tryDeferred() {
-        val idx = deferred.onDevice(outputDeviceKey()) ?: return
-        stopDeviceCallback()
-        setIndex(idx)
+    private fun tryDeferred(retry: Boolean = true) {
+        when (val r = deferred.onDevice(outputDeviceKey(), index())) {
+            is DeferredOutcome.Restore -> {
+                stopDeviceCallback()
+                setIndex(r.index)
+            }
+            DeferredOutcome.Skip -> stopDeviceCallback()
+            DeferredOutcome.NotYet ->
+                // The callback can fire before routing switches (output still reads as the old device): look once more.
+                if (retry && deferred.pending) mainHandler.postDelayed({ tryDeferred(retry = false) }, RETRY_DELAY_MS)
+        }
     }
 
     private fun stopDeviceCallback() {
@@ -148,6 +156,7 @@ class AndroidVolumeController(
     override val changes: Flow<Int> = rawChanges.shareIn(scope, SharingStarted.WhileSubscribed(), replay = 0)
 
     companion object {
+        private const val RETRY_DELAY_MS = 500L
         const val VOLUME_CHANGED_ACTION = "android.media.VOLUME_CHANGED_ACTION"
 
         /** AudioDeviceInfo.TYPE_* of the current media output (speaker if undeterminable). */

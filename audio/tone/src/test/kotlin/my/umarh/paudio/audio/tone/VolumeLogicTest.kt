@@ -141,7 +141,7 @@ class VolumeLogicTest {
             return vc.setIndex(i)
         }
         override fun outputDeviceKey(): Int? = device
-        override fun deferRestore(deviceKey: Int, index: Int) = deferredRestore.defer(deviceKey, index)
+        override fun deferRestore(deviceKey: Int, index: Int, lockedIndex: Int?) = deferredRestore.defer(deviceKey, index, lockedIndex)
         override fun cancelDeferredRestore() = deferredRestore.cancel()
     }
 
@@ -156,8 +156,8 @@ class VolumeLogicTest {
         lock.release()
         assertThat(dv.writesByDevice).containsExactly(headset to 5) // no write on the speaker
         assertThat(dv.deferredRestore.pending).isTrue()
-        assertThat(dv.deferredRestore.onDevice(speaker)).isNull() // still unplugged
-        assertThat(dv.deferredRestore.onDevice(headset)).isEqualTo(9) // reconnected: restore original
+        assertThat(dv.deferredRestore.onDevice(speaker, 3)).isEqualTo(DeferredOutcome.NotYet) // still unplugged
+        assertThat(dv.deferredRestore.onDevice(headset, 5)).isEqualTo(DeferredOutcome.Restore(9)) // unchanged: restore original
         assertThat(dv.deferredRestore.pending).isFalse()
     }
 
@@ -168,8 +168,30 @@ class VolumeLogicTest {
         lock.lock(5)
         lock.release()
         assertThat(dv.writesByDevice).containsExactly(3 to 5, 3 to 9).inOrder()
-        dv.deferredRestore.defer(3, 1)
+        dv.deferredRestore.defer(3, 1, 1)
         VolumeLock(dv).lock(6)
         assertThat(dv.deferredRestore.pending).isFalse()
+    }
+
+    @Test
+    fun deferredRestoreDoesNotRaiseVolumeLoweredExternally() {
+        val dv = DeviceVolume(FakeVolumeController(maxIndex = 15, initialIndex = 9), 3)
+        val lock = VolumeLock(dv)
+        lock.lock(7)
+        dv.device = 2 // unplugged
+        lock.release()
+        // reconnect: the headset index was lowered (CSD) to 4 < original 9 and != locked 7
+        assertThat(dv.deferredRestore.onDevice(3, 4)).isEqualTo(DeferredOutcome.Skip)
+        assertThat(dv.deferredRestore.pending).isFalse()
+    }
+
+    @Test
+    fun deferredRestoreRaisesWhenExternalChangeWasHigherAndNeverForOtherDevices() {
+        val d = DeferredRestore()
+        d.defer(3, 9, 7)
+        assertThat(d.onDevice(2, 12)).isEqualTo(DeferredOutcome.NotYet) // speaker: never resolves
+        assertThat(d.onDevice(null, 12)).isEqualTo(DeferredOutcome.NotYet)
+        assertThat(d.onDevice(3, 12)).isEqualTo(DeferredOutcome.Restore(9))
+        assertThat(d.onDevice(3, 12)).isEqualTo(DeferredOutcome.NotYet) // consumed
     }
 }
