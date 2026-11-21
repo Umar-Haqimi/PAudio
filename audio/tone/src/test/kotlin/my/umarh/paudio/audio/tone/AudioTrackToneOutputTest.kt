@@ -1,6 +1,7 @@
 package my.umarh.paudio.audio.tone
 
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import my.umarh.paudio.core.model.StereoBuffer
@@ -36,6 +37,37 @@ class AudioTrackToneOutputTest {
         assertThat(flow.value).isFalse()
         assertThat(sinks).hasSize(2)
         out.close()
+    }
+
+    /**
+     * Trap #5 (one AudioTrack per beep): the sink factory, i.e. `AudioTrack` creation, runs exactly once for a whole
+     * session: not per stimulus, not per silent gap, not per stopped stimulus, and not for a repeated open at the same
+     * rate (the session re-opens only after a lost stream).
+     */
+    @Test
+    fun oneSinkForManyStimuliGapsStopsAndRepeatedOpens() = runBlocking {
+        val sinks = mutableListOf<FakeSink>()
+        var factoryCalls = 0
+        val out = AudioTrackToneOutput(sinkFactory = { r -> factoryCalls++; FakeSink(r).also { sinks += it } })
+        out.open(rate)
+        withTimeout(10_000) {
+            repeat(6) {
+                out.play(tone(480))
+                out.playSilence(5)
+            }
+            out.open(rate) // idempotent at the same rate
+            out.open(rate)
+            val long = this.async(kotlinx.coroutines.Dispatchers.Default) { out.play(tone(48_000)) }
+            Thread.sleep(50)
+            out.stopCurrent()
+            long.await()
+            repeat(3) { out.play(tone(480)) }
+        }
+        assertThat(factoryCalls).isEqualTo(1)
+        assertThat(sinks.single().released).isEqualTo(0)
+        assertThat(sinks.single().stopped).isEqualTo(0)
+        out.close()
+        assertThat(sinks.single().released).isEqualTo(1)
     }
 
     @Test

@@ -77,6 +77,57 @@ class StreamEngineTest {
     }
 
     @Test
+    fun explicitSilenceNeverSetsPlaying() = runBlocking {
+        val e = StreamEngine(FakeSink(rate), rate)
+        e.start()
+        val seen = async(Dispatchers.Default) {
+            var sawTrue = false
+            val end = System.currentTimeMillis() + 600
+            while (System.currentTimeMillis() < end) {
+                if (e.playing.value) sawTrue = true
+                Thread.sleep(1)
+            }
+            sawTrue
+        }
+        withTimeout(5_000) { e.playSilence(400) }
+        assertThat(seen.await()).isFalse()
+        e.close()
+    }
+
+    /**
+     * The Thorough dial loop (pulse buffer, then a separate silent gap buffer): `playing` drops for the gap, and is
+     * already false whenever a pulse's play() has returned (published before the caller is woken; trap #20).
+     */
+    @Test
+    fun pulseThenSilentGapDropsPlayingForTheGap() = runBlocking {
+        val e = StreamEngine(FakeSink(rate), rate)
+        e.start()
+        var falseInGap = 0
+        var trueAfterPulseReturned = 0
+        val gapWatcher = java.util.concurrent.atomic.AtomicBoolean(false)
+        val sampler = async(Dispatchers.Default) {
+            val end = System.currentTimeMillis() + 2_000
+            while (System.currentTimeMillis() < end) {
+                if (gapWatcher.get() && !e.playing.value) falseInGap++
+                Thread.sleep(1)
+            }
+        }
+        withTimeout(5_000) {
+            repeat(3) {
+                e.play(tone(4_800))
+                if (e.playing.value) trueAfterPulseReturned++
+                gapWatcher.set(true)
+                e.playSilence(150)
+                gapWatcher.set(false)
+            }
+        }
+        sampler.await()
+        assertThat(trueAfterPulseReturned).isEqualTo(0)
+        assertThat(falseInGap).isGreaterThan(0)
+        e.close()
+    }
+
+    @Test
     fun cancellingPlayRampsToSilenceAndCloseIsIdempotent() = runBlocking {
         val sink = FakeSink(rate)
         val e = StreamEngine(sink, rate)
@@ -85,8 +136,8 @@ class StreamEngineTest {
         Thread.sleep(100)
         job.cancelAndJoin()
         Thread.sleep(150) // ramp (25 ms) + margin
-        val n = sink.samples.size
-        val tail = sink.samples.subList(n - 2000, n)
+        // Copy under the list's lock: the writer thread keeps appending silence (a live subList view throws CME).
+        val tail = synchronized(sink.samples) { sink.samples.takeLast(2000) }
         assertThat(tail.all { it == 0f }).isTrue()
         assertThat(e.playing.value).isFalse()
         e.close()
@@ -154,7 +205,7 @@ class StreamEngineTest {
         withTimeout(3_000) { e.play(tone(2_400)) }
         assertThat(created).isEqualTo(1)
         assertThat(e.sinkRecreations).isEqualTo(1)
-        assertThat(second.samples.any { it == 0.5f }).isTrue()
+        assertThat(synchronized(second.samples) { second.samples.any { it == 0.5f } }).isTrue()
         e.close()
     }
 

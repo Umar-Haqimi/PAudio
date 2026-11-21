@@ -78,8 +78,10 @@ sealed interface HearingTestUiState {
         /** Some environment checks could not be read on this device (non-blocking caution). */
         val someChecksUnknown: Boolean,
         val noise: NoiseMeterState,
+        /** "Start the test" was tapped and the session is being set up: Start stays disabled (double tap). */
+        val starting: Boolean = false,
     ) : HearingTestUiState {
-        val canStart: Boolean get() = blockers.isEmpty()
+        val canStart: Boolean get() = blockers.isEmpty() && !starting
     }
 
     data class Active(val session: SessionState) : HearingTestUiState
@@ -135,6 +137,13 @@ class HearingTestViewModel internal constructor(
     private var session: TestSession? = null
     private var lastMode: TestMode = TestMode.QUICK
 
+    /**
+     * Set synchronously by [startTest] before anything suspends and cleared when the start attempt ends: a second
+     * tap while the first is still validating the page is ignored (it would start a second session and leak a
+     * bypass token). Main thread only.
+     */
+    private val starting = MutableStateFlow(false)
+
     /** The running session (tests only). */
     internal val currentSession: TestSession? get() = session
 
@@ -146,8 +155,14 @@ class HearingTestViewModel internal constructor(
     /** Haptic / announcement triggers; emitted only after a stimulus has stopped (SPEC §2.2 #20). */
     val signals: SharedFlow<SessionSignal> = _signals
 
-    /** True while a stimulus is audible: pulses the hear button; no haptics while true. */
-    val stimulusPlaying: StateFlow<Boolean> get() = deps.tone.playing
+    /**
+     * The running session's [TestSession.pulseAudible]: pulses the hear button / wave; haptics wait while true (the
+     * dial's deferred tick fires when it drops). False without a session.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val stimulusPlaying: StateFlow<Boolean> = stage
+        .flatMapLatest { s -> (s as? Stage.Running)?.session?.pulseAudible ?: flowOf(false) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val uiState: StateFlow<HearingTestUiState> = stage
@@ -182,8 +197,8 @@ class HearingTestViewModel internal constructor(
     }
 
     private fun prepFlow(mode: TestMode): Flow<HearingTestUiState.Prep> =
-        combine(envSnapshots(), deps.devices.current, ancOn, noiseState) { snap, device, anc, ns ->
-            PrepInputs(snap, device, anc, ns)
+        combine(envSnapshots(), deps.devices.current, ancOn, noiseState, starting) { snap, device, anc, ns, st ->
+            PrepInputs(snap, device, anc, ns, st)
         }.map { p ->
             val verdict = EnvironmentVerdict.of(p.snapshot)
             HearingTestUiState.Prep(
@@ -197,10 +212,17 @@ class HearingTestViewModel internal constructor(
                 blockers = blockersOf(verdict, p.device),
                 someChecksUnknown = verdict.unknown.any { it != my.umarh.paudio.audio.device.EnvCheck.DND },
                 noise = p.noise,
+                starting = p.starting,
             )
         }
 
-    private class PrepInputs(val snapshot: EnvSnapshot, val device: OutputDevice?, val anc: Boolean, val noise: NoiseMeterState)
+    private class PrepInputs(
+        val snapshot: EnvSnapshot,
+        val device: OutputDevice?,
+        val anc: Boolean,
+        val noise: NoiseMeterState,
+        val starting: Boolean,
+    )
 
     private suspend fun blockersOf(verdict: EnvironmentVerdict, device: OutputDevice?): List<PrepBlocker> = buildList {
         for (w in verdict.blocking) {
@@ -248,11 +270,19 @@ class HearingTestViewModel internal constructor(
     /** Re-validates the page (the environment may have changed since the last poll) and starts the session. */
     override fun startTest() {
         val prep = stage.value as? Stage.Prep ?: return
-        if (session != null) return
+        // Synchronous guard, set before the first suspension: a double tap must never start two sessions.
+        if (session != null || starting.value) return
+        starting.value = true
         viewModelScope.launch {
-            val verdict = EnvironmentVerdict.of(env.snapshot())
-            if (blockersOf(verdict, deps.devices.current.value).isNotEmpty()) return@launch
-            launchSession(prep.mode)
+            try {
+                val verdict = EnvironmentVerdict.of(env.snapshot())
+                if (blockersOf(verdict, deps.devices.current.value).isNotEmpty()) return@launch
+                // The user may have left the page while the checks ran.
+                if (stage.value != prep || session != null) return@launch
+                launchSession(prep.mode)
+            } finally {
+                starting.value = false
+            }
         }
     }
 
@@ -296,6 +326,18 @@ class HearingTestViewModel internal constructor(
     override fun redoTest() = session?.redoTest() ?: Unit
 
     override fun keepGoing() = session?.keepGoing() ?: Unit
+
+    /** SaveFailed: store the finished test again (the session ignores double taps). */
+    override fun retrySave() {
+        val s = session ?: return
+        viewModelScope.launch { s.retrySave() }
+    }
+
+    /** SaveFailed with a deleted profile: the user chose to save under the active profile for these headphones. */
+    override fun saveToActiveProfile() {
+        val s = session ?: return
+        viewModelScope.launch { s.retrySave(useActiveProfile = true) }
+    }
 
     fun onStopped() = session?.onBackgrounded() ?: Unit
 

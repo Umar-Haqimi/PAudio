@@ -128,13 +128,11 @@ class AudioTrackToneOutput internal constructor(
 
     override suspend fun play(stimulus: StereoBuffer) = requireEngine().play(stimulus)
 
-    /** Digital silence is already flowing; this plays an explicit silent stimulus so timing stays sample-based. */
-    override suspend fun playSilence(ms: Int) {
-        val e = requireEngine()
-        val n = e.sampleRate.toLong() * ms / 1000
-        if (n <= 0) return
-        e.play(StereoBuffer(FloatArray(n.toInt()), FloatArray(n.toInt()), e.sampleRate))
-    }
+    /**
+     * Digital silence is already flowing; this plays an explicit silent segment so timing stays sample-based. It
+     * never sets [playing], which means "an audible stimulus is under the playback head" (the core contract).
+     */
+    override suspend fun playSilence(ms: Int) = requireEngine().playSilence(ms)
 
     override suspend fun stopCurrent() {
         synchronized(lock) { engine }?.stopCurrent()

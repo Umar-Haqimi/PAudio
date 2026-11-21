@@ -226,6 +226,14 @@ Pending reviews: Opus re-verify of M7a P0 fixes; Sonnet review of M10. See `docs
 - Whole-project `./gradlew check assembleDebug` passed on M12's branch; on the merged tip, `:app:assembleDebug`,
   `:app:verifyPermissions`, `verifyNoSensitiveLogging` and `:testing:test` pass.
 
+## M9a review fixes
+- All four MUST-FIX items of the M9a review fixed (DECISIONS §27): resume republishes the interrupted screen; double-tap Start guarded (synchronous `starting` flag + process-wide `SessionGate`); a Continue racing Exit or the pause timeout no longer re-raises the volume or re-takes focus; the Thorough dial plays pulse and gap as separate buffers and the session exposes `pulseAudible`, so the deferred haptic tick lands in the gap. `StreamEngine.playing` no longer counts explicit silence.
+- SHOULD-FIX 1, 2, 3, 5, 6, 8 and the NITs fixed (4 and 7 belong to other modules). New `SaveFailed` state with Retry and an explicit choice for a deleted profile.
+- Trap 20 is now pinned behaviourally (`Trap20SessionTest`, `Trap20UiTest`); trap 5 now pinned by real open/close counts (`AudioTrackToneOutputTest::oneSinkForManyStimuliGapsStopsAndRepeatedOpens`, session cleanup asserts). DECISIONS §26.3 rows 5 and 20 updated in place: 19 pinned, 1 device-only, 0 gaps.
+- `:feature:hearingtest` gained `HearingTestA11yTest` (every flow screen, both themes).
+- After merging the session-3 polish batch: `RepositoryTestStore.save` uses the new `:data` `DataTransactions` (one transaction, `NonCancellable`, active listener written after the commit).
+- HARDWARE_TEST item to add: Bluetooth sink latency vs the haptic/announcement timing (the playback head ignores the sink latency).
+
 ## Session 3 — polish fixes outside the hearing-test feature (DECISIONS §28)
 - VolumeLock defers the volume restore when the start device is gone (never writes to the speaker); Results "Test again" keeps the profileId; Preference back button 48 dp; `:data` `DataTransactions` + `AndroidPreferenceData.save` in one transaction; `:app` test source set with the seed-sync test; Samsung `mono_audio` read; `gen_all.py --check` (vectors verified identical); LICENSE verified byte-identical to gnu.org's `gpl-3.0.txt`; `<queries>` reviewed (justified, unchanged).
 

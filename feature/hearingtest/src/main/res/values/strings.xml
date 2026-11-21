@@ -125,6 +125,14 @@
     <string name="hearingtest_aborted_try_again">Try again</string>
     <string name="hearingtest_aborted_close">Close</string>
 
+    <!-- Save failed (the finished test is kept in memory until the user retries or leaves) -->
+    <string name="hearingtest_save_failed_heading">Your results aren\'t saved yet</string>
+    <string name="hearingtest_save_failed_text">We couldn\'t save your results. Your answers are still here, so you can try again.</string>
+    <string name="hearingtest_save_failed_profile_missing">The profile this test was for has been deleted. You can save the results to the current listener\'s profile for these earphones instead.</string>
+    <string name="hearingtest_save_failed_retry">Try saving again</string>
+    <string name="hearingtest_save_failed_use_active">Save to the current profile</string>
+    <string name="hearingtest_save_failed_discard">Leave without saving</string>
+
     <!-- Exit confirmation -->
     <string name="hearingtest_exit_title">Stop the test?</string>
     <string name="hearingtest_exit_text">If you leave now, your progress is lost.</string>

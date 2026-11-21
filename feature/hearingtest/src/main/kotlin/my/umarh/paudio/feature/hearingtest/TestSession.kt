@@ -3,14 +3,17 @@ package my.umarh.paudio.feature.hearingtest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
@@ -33,17 +36,17 @@ import my.umarh.paudio.core.audiometry.QuickTestEngine
 import my.umarh.paudio.core.audiometry.StimulusSynth
 import my.umarh.paudio.core.audiometry.ThoroughTestEngine
 import my.umarh.paudio.core.audiometry.Trial
+import my.umarh.paudio.core.model.BypassController
 import my.umarh.paudio.core.model.BypassReason
 import my.umarh.paudio.core.model.BypassToken
 import my.umarh.paudio.core.model.Ear
 import my.umarh.paudio.core.model.InterruptibleToneOutput
 import my.umarh.paudio.core.model.OutputDevice
 import my.umarh.paudio.core.model.OutputDevices
-import my.umarh.paudio.core.model.VolumeController
-import my.umarh.paudio.core.model.BypassController
 import my.umarh.paudio.core.model.StereoBuffer
 import my.umarh.paudio.core.model.TestMode
 import my.umarh.paudio.core.model.TrialJson
+import my.umarh.paudio.core.model.VolumeController
 import my.umarh.paudio.data.db.HearingTestEntity
 import my.umarh.paudio.data.db.ThresholdEntity
 import my.umarh.paudio.data.db.TrialEntity
@@ -63,6 +66,7 @@ class SessionDeps @Inject constructor(
     val clock: Clock,
     val store: TestStore,
     val calibrations: CalibrationCache,
+    val gate: SessionGate,
 )
 
 class SessionConfig(
@@ -70,7 +74,7 @@ class SessionConfig(
     val ancOn: Boolean,
     val requestedProfileId: Long?,
     val random: Random = Random.Default,
-    /** Longest continuous pause before the session gives the engine back (see DECISIONS §20). */
+    /** Longest continuous pause before the session gives the engine back (see DECISIONS §23). */
     val pauseTimeoutMs: Long = DEFAULT_PAUSE_TIMEOUT_MS,
     /** Catch trials needed before the mid-test "answers looked like guesses" prompt can fire. */
     val earlyReliabilityMinCatches: Int = TestSession.EARLY_RELIABILITY_MIN_CATCHES,
@@ -102,11 +106,14 @@ private class CalibrationOutcomeData(
 
 /**
  * One hearing-test session: `Starting → ChannelCheck → Calibrating → Testing ⇄ Paused → Saving → Finished | Aborted`
- * (SPEC §4 item 8). Pure Kotlin over interfaces.
+ * (SPEC §4 item 8; `SaveFailed` when the finished test could not be stored). Pure Kotlin over interfaces.
  *
  * Threading contract (SPEC §5.3): everything runs as ONE coroutine on [scope]'s dispatcher, which the owner makes a
  * dedicated single-thread dispatcher. The engines ([QuickTestEngine], [ThoroughTestEngine]) are only ever touched
  * from that coroutine. Public input functions are thread-safe (atomics / StateFlow / `scope.launch`).
+ *
+ * One session at a time: [run] first takes the process-wide [SessionGate], so a new session waits until the previous
+ * one's cleanup has finished (two sessions never share the tone output, volume lock or focus).
  *
  * P0 (SPEC §2.2 #1): ONE [BypassToken] is acquired before the stream is opened and closed LAST in `finally`; the
  * engine is never un-bypassed in between, also while paused.
@@ -114,6 +121,7 @@ private class CalibrationOutcomeData(
  * Cancellation (SPEC §5.3): cancelling the job at any suspension point (or an exception) runs one `finally` that
  * closes the tone output, restores the volume, abandons focus and then releases the bypass token, each step
  * guarded so a failure in one cannot skip the next. The terminal [SessionState] is published AFTER that cleanup.
+ * Inputs that arrive after the cleanup started (a queued Continue, for example) are ignored.
  */
 class TestSession(
     private val config: SessionConfig,
@@ -124,13 +132,33 @@ class TestSession(
     val state: StateFlow<SessionState> = _state
 
     private val _signals = MutableSharedFlow<SessionSignal>(extraBufferCapacity = 16)
+
+    /** Haptic / announcement triggers; each is emitted only while nothing is audible (trap #20). */
     val signals: SharedFlow<SessionSignal> = _signals
 
-    /** True while a stimulus is audible (drives the pulse / wave amplitude; haptics are suppressed while true). */
-    val stimulusPlaying: StateFlow<Boolean> get() = deps.tone.playing
+    /** True from just before a stimulus is queued until play() returned (a silent catch trial counts too). */
+    private val inStimulus = MutableStateFlow(false)
+
+    /**
+     * True while a stimulus may be audible: from just before the session queues it until it has played out AND the
+     * tone output reports no audible stimulus under the playback head (which also covers the 25 ms ramp-down after a
+     * cancellation). Silent gaps are separate buffers, so the flag drops in every gap, including between the pulses of
+     * the Thorough dial loop. Drives the visual pulse; haptics wait for it to be false. A silent catch presentation
+     * sets it like a real stimulus, so the visuals never reveal a catch trial.
+     */
+    val pulseAudible: Flow<Boolean> = combine(inStimulus, deps.tone.playing) { a, b -> a || b }.distinctUntilChanged()
+
+    /** Current value of [pulseAudible] (tests / assertions). */
+    internal val isPulseAudibleNow: Boolean get() = inStimulus.value || deps.tone.playing.value
 
     private val rng = config.random
-    private var job: Job? = null
+    @Volatile private var job: Job? = null
+
+    /** Set at the top of the cleanup `finally`: from then on no input may touch volume, focus or audio again. */
+    @Volatile private var cleanupStarted = false
+
+    /** The pause timed out: a Continue that races it is ignored (the session is about to end or to save). */
+    @Volatile private var pauseTimedOut = false
 
     // ---- pause machinery -------------------------------------------------------------------------------------
     private val reasons = MutableStateFlow<Set<PauseReason>>(emptySet())
@@ -139,6 +167,9 @@ class TestSession(
     private val volumeKeysNeeded = MutableStateFlow(false)
     private val driftSuppressed = AtomicBoolean(false)
     private var testFinishedPrompt = false
+
+    /** The screen that was up when the current pause began; re-published when the pause ends. */
+    private var resumeState: SessionState? = null
 
     // ---- user input ------------------------------------------------------------------------------------------
     private val channelRef = AtomicReference<CompletableDeferred<ChannelAnswer>?>(null)
@@ -154,6 +185,11 @@ class TestSession(
     @Volatile private var currentRun: DialRun? = null
     private val dialPosition = MutableStateFlow(0)
 
+    // ---- saving ----------------------------------------------------------------------------------------------
+    /** The finished test while it is not stored yet (kept for [retrySave]). */
+    @Volatile private var pendingSave: SaveRequest? = null
+    private val retrying = AtomicBoolean(false)
+
     // ---- session facts ---------------------------------------------------------------------------------------
     private lateinit var startDevice: OutputDevice
     private lateinit var lock: VolumeLock
@@ -167,9 +203,20 @@ class TestSession(
 
     val isActive: Boolean get() = job?.isActive == true
 
+    /** Channel check: an answer would count now (tests). */
+    internal val channelAnswerArmed: Boolean get() = channelRef.get() != null
+
+    /** Quick: a trial is open and an answer would count now (tests). */
+    internal val responseArmed: Boolean get() = responseRef.get() != null
+
     fun start(): Job {
         check(job == null) { "already started" }
-        return scope.launch { run() }.also { job = it }
+        val j = scope.launch(start = CoroutineStart.LAZY) { run() }
+        job = j
+        // A job cancelled before it ever ran (or while waiting for the gate) still ends in a terminal state.
+        j.invokeOnCompletion { if (!_state.value.isAfterCleanup) _state.value = SessionState.Aborted(AbortReason.USER) }
+        j.start()
+        return j
     }
 
     /** Cancels the session and waits for its cleanup; safe to call repeatedly. */
@@ -184,11 +231,15 @@ class TestSession(
 
     // ---- public inputs ---------------------------------------------------------------------------------------
 
+    /** Counts only once the current step's first beep has played (a double tap cannot answer the next step). */
     fun answerChannel(answer: ChannelAnswer) {
         channelRef.get()?.complete(answer)
     }
 
-    /** "I hear it" during the calibration ramp; captures the level playing at this moment. */
+    /**
+     * "I hear it" during the calibration ramp; captures the level playing at this moment. Ignored during the first
+     * [CAL_TAP_GUARD_MS] of each ramp (the second tap of a double tap would otherwise land at about -90 dBFS).
+     */
     fun calibrationTap() {
         tapRef.get()?.complete(currentRampLevel)
     }
@@ -198,7 +249,7 @@ class TestSession(
         manualVolumeRef.get()?.complete(Unit)
     }
 
-    /** Quick: "I heard it" / "I didn't". Counts only while a trial is open (stimulus presented, unanswered). */
+    /** Quick: "I heard it" / "I didn't". Counts only while a trial is open; taps between trials are ignored. */
     fun respond(heard: Boolean) {
         responseRef.get()?.complete(heard)
     }
@@ -237,6 +288,7 @@ class TestSession(
 
     /** The user asked to continue. Re-establishes focus / volume first; stays paused when that fails. */
     fun resume() {
+        if (cleanupStarted || pauseTimedOut || job?.isActive != true) return
         scope.launch { resumeNow() }
     }
 
@@ -252,13 +304,49 @@ class TestSession(
         reasons.update { it - PauseReason.UNRELIABLE }
     }
 
-    // ---- main flow -------------------------------------------------------------------------------------------
-
-    private fun isTestRunning(): Boolean = _state.value.let {
-        it !is SessionState.Finished && it !is SessionState.Aborted && it !is SessionState.Saving
+    /**
+     * After [SessionState.SaveFailed]: tries to store the finished test again. No audio, volume, focus or bypass is
+     * involved (the cleanup has already run), so this runs on the caller's scope. [useActiveProfile] = the user chose
+     * to save a test whose profile was deleted under the active listener's profile for the headset instead.
+     * Concurrent calls (double taps) are ignored.
+     */
+    suspend fun retrySave(useActiveProfile: Boolean = false) {
+        val failed = _state.value as? SessionState.SaveFailed ?: return
+        val original = pendingSave ?: return
+        if (!retrying.compareAndSet(false, true)) return
+        try {
+            val request = if (useActiveProfile) original.withoutRequestedProfile().also { pendingSave = it } else original
+            _state.value = SessionState.Saving
+            _state.value = try {
+                trySave(request)
+            } catch (e: CancellationException) {
+                _state.value = failed
+                throw e
+            }
+        } finally {
+            retrying.set(false)
+        }
     }
 
+    // ---- main flow -------------------------------------------------------------------------------------------
+
+    private fun isTestRunning(): Boolean = _state.value.let { !it.isAfterCleanup && it !is SessionState.Saving }
+
     private suspend fun run() {
+        try {
+            deps.gate.mutex.lock(this)
+        } catch (e: CancellationException) {
+            _state.value = SessionState.Aborted(AbortReason.USER) // nothing acquired yet
+            throw e
+        }
+        try {
+            runOwned()
+        } finally {
+            deps.gate.mutex.unlock(this)
+        }
+    }
+
+    private suspend fun runOwned() {
         var token: BypassToken? = null
         var focusHeld = false
         var terminal: SessionState? = null
@@ -301,41 +389,34 @@ class TestSession(
                         TestMode.THOROUGH -> runThorough(cal)
                     }
                     _state.value = SessionState.Saving
-                    val id = try {
-                        deps.store.save(
-                            SaveRequest(
-                                requestedProfileId = config.requestedProfileId,
-                                device = startDevice,
-                                test = HearingTestEntity(
-                                    profileId = 0,
-                                    mode = config.mode,
-                                    startedAt = startedAtWall,
-                                    durationMs = deps.clock.monotonicMs() - t0,
-                                    volIndex = cal.index,
-                                    volMax = cal.maxIndex,
-                                    lRef = cal.lRefDbfs.toFloat(),
-                                    deviceSnapshotJson = buildJsonObject {
-                                        put("type", startDevice.type.name)
-                                        put("productName", startDevice.productName)
-                                        put("addressSuffix", startDevice.addressSuffix)
-                                        put("calibrationWarning", cal.warning)
-                                    }.toString(),
-                                    ancOn = config.ancOn,
-                                    appVersion = deps.platform.appVersion(),
-                                    algoVersion = ALGO_VERSION,
-                                    fpRate = saveData.fpRate,
-                                    reliable = saveData.reliable,
-                                ),
-                                thresholds = saveData.thresholds,
-                                trials = saveData.trials,
-                            ),
-                        )
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        throw AbortException(AbortReason.SAVE_FAILED)
-                    }
-                    terminal = SessionState.Finished(id)
+                    val request = SaveRequest(
+                        requestedProfileId = config.requestedProfileId,
+                        device = startDevice,
+                        test = HearingTestEntity(
+                            profileId = 0,
+                            mode = config.mode,
+                            startedAt = startedAtWall,
+                            durationMs = deps.clock.monotonicMs() - t0,
+                            volIndex = cal.index,
+                            volMax = cal.maxIndex,
+                            lRef = cal.lRefDbfs.toFloat(),
+                            deviceSnapshotJson = buildJsonObject {
+                                put("type", startDevice.type.name)
+                                put("productName", startDevice.productName)
+                                put("addressSuffix", startDevice.addressSuffix)
+                                put("calibrationWarning", cal.warning)
+                            }.toString(),
+                            ancOn = config.ancOn,
+                            appVersion = deps.platform.appVersion(),
+                            algoVersion = ALGO_VERSION,
+                            fpRate = saveData.fpRate,
+                            reliable = saveData.reliable,
+                        ),
+                        thresholds = saveData.thresholds,
+                        trials = saveData.trials,
+                    )
+                    pendingSave = request
+                    terminal = trySave(request)
                 } finally {
                     monitors.cancel()
                 }
@@ -349,21 +430,39 @@ class TestSession(
             lastFailure = e
             terminal = SessionState.Aborted(AbortReason.AUDIO_ERROR)
         } finally {
+            // From here on a queued input (Continue racing Exit or the pause timeout) must not re-raise the volume
+            // or re-take focus: resumeNow() checks this flag. Everything below is synchronous on the session thread.
+            cleanupStarted = true
             // Order matters (P0): nothing may be audible once the token is gone, so the stream goes first and the
             // bypass token last. Every step is guarded: a failure in one must not skip the next.
             runCatching { deps.tone.close() }
             runCatching { if (::lock.isInitialized) lock.release() }
             runCatching { if (focusHeld) deps.focus.abandon() }
             runCatching { token?.close() }
+            inStimulus.value = false
             _state.value = terminal ?: SessionState.Aborted(AbortReason.USER)
         }
+    }
+
+    /** Stores [request]; a failure keeps it in [pendingSave] for [retrySave]. */
+    private suspend fun trySave(request: SaveRequest): SessionState = try {
+        val id = deps.store.save(request)
+        pendingSave = null
+        SessionState.Finished(id)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: ProfileMissingException) {
+        SessionState.SaveFailed(profileMissing = true)
+    } catch (e: Exception) {
+        lastFailure = e
+        SessionState.SaveFailed(profileMissing = false)
     }
 
     private fun CoroutineScope.launchMonitors(): Job = launch {
         val jobs = listOf(
             launch {
                 deps.devices.current.collect { d ->
-                    val ok = d != null && d.isProcessable && d.headsetKey == startDevice.headsetKey
+                    val ok = isStartHeadset(d)
                     headsetOk.value = ok
                     if (!ok) raise(PauseReason.HEADSET_DISCONNECTED)
                 }
@@ -388,6 +487,9 @@ class TestSession(
         joinAll(*jobs.toTypedArray())
     }
 
+    private fun isStartHeadset(d: OutputDevice?): Boolean =
+        d != null && d.isProcessable && d.headsetKey == startDevice.headsetKey
+
     // ---- pause handling --------------------------------------------------------------------------------------
 
     private fun raise(reason: PauseReason) {
@@ -395,11 +497,13 @@ class TestSession(
     }
 
     private fun resumeNow() {
+        // A resume task queued behind the cleanup (Exit, pause timeout) must not touch volume or focus again.
+        if (cleanupStarted || pauseTimedOut || job?.isActive != true) return
         val current = reasons.value
         if (current.isEmpty() || !foreground.value) return
         val cleared = mutableSetOf<PauseReason>()
         if (PauseReason.HEADSET_DISCONNECTED in current) {
-            if (!headsetOk.value) return
+            if (!headsetOk.value || !isStartHeadset(deps.devices.current.value)) return
             cleared += PauseReason.HEADSET_DISCONNECTED
         }
         if (PauseReason.FOCUS_LOST in current && deps.focus.reacquire()) cleared += PauseReason.FOCUS_LOST
@@ -416,15 +520,33 @@ class TestSession(
         reasons.update { it - cleared }
     }
 
+    /**
+     * Shows [SessionState.Paused] while any reason is active, then puts the screen that was up before the pause back
+     * (a Quick trial screen comes back with the trial closed, a Thorough one without the dial: the interrupted unit
+     * restarts and publishes its own state). Throws PAUSE_TIMEOUT after [SessionConfig.pauseTimeoutMs].
+     */
     private suspend fun awaitNotPaused() {
         if (reasons.value.isEmpty()) return
+        val before = _state.value
+        if (before !is SessionState.Paused) resumeState = before
         val finished = withTimeoutOrNull(config.pauseTimeoutMs) {
             combine(reasons, headsetOk, foreground, volumeKeysNeeded) { r, h, f, v -> PausedView(r, h && f, v) }
                 .onEach { publishPaused(it) }
                 .first { it.reasons.isEmpty() }
             true
         }
-        if (finished == null) throw AbortException(AbortReason.PAUSE_TIMEOUT)
+        // A Continue that cleared every reason in the same instant as the timeout wins (the pause did end in time).
+        if (finished == null && reasons.value.isNotEmpty()) {
+            pauseTimedOut = true
+            throw AbortException(AbortReason.PAUSE_TIMEOUT)
+        }
+        resumeState?.let { _state.value = afterPause(it) }
+        resumeState = null
+    }
+
+    private fun afterPause(s: SessionState): SessionState = when (s) {
+        is SessionState.Testing -> s.copy(trialOpen = false, dial = null)
+        else -> s
     }
 
     private class PausedView(val reasons: Set<PauseReason>, val canResume: Boolean, val volumeKeysNeeded: Boolean)
@@ -442,13 +564,15 @@ class TestSession(
     }
 
     @Volatile private var inCalibration = false
-    private var streamFailures = 0
+
+    /** Stream losses in a row; reset by every unit that completes (a flaky stream later in the test is not fatal). */
+    private var consecutiveStreamFailures = 0
 
     /**
      * Runs [block] as one interruptible unit of work: it is cancelled the moment any pause reason is raised (the
      * tone is ramped down by the cancellation), and re-run after the user resumed. [onInterrupted] restores the
      * engine state of the interrupted unit (restart only that point/run). A lost stream (`IllegalStateException`
-     * from the tone output) re-opens the stream and redoes the unit, at most [MAX_STREAM_FAILURES] times.
+     * from the tone output) re-opens the stream and redoes the unit, at most [MAX_STREAM_FAILURES] times in a row.
      */
     private suspend fun <T> pausable(onInterrupted: () -> Unit = {}, block: suspend () -> T): T {
         while (true) {
@@ -459,7 +583,7 @@ class TestSession(
                 throw e // java.util.concurrent.CancellationException IS an IllegalStateException: never swallow it
             } catch (e: IllegalStateException) {
                 lastFailure = e
-                if (++streamFailures > MAX_STREAM_FAILURES) throw AbortException(AbortReason.AUDIO_ERROR)
+                if (++consecutiveStreamFailures > MAX_STREAM_FAILURES) throw AbortException(AbortReason.AUDIO_ERROR)
                 try {
                     deps.tone.open(sampleRate)
                 } catch (e2: CancellationException) {
@@ -469,7 +593,10 @@ class TestSession(
                 }
                 null
             }
-            if (box != null) return box.value
+            if (box != null) {
+                consecutiveStreamFailures = 0
+                return box.value
+            }
             onInterrupted()
         }
     }
@@ -497,6 +624,33 @@ class TestSession(
             raise(PauseReason.VOLUME_CHANGED)
             throw Interrupted()
         }
+    }
+
+    /** The live output, read synchronously: the device event may not have reached the monitor yet. */
+    private fun ensureHeadsetUnchanged() {
+        if (!isStartHeadset(deps.devices.current.value)) {
+            raise(PauseReason.HEADSET_DISCONNECTED)
+            throw Interrupted()
+        }
+    }
+
+    /** Plays one stimulus (a silent catch buffer counts as one) with [inStimulus] raised around it. */
+    private suspend fun playStimulus(buffer: StereoBuffer) {
+        inStimulus.value = true
+        try {
+            deps.tone.play(buffer)
+        } finally {
+            inStimulus.value = false
+        }
+    }
+
+    /**
+     * Emits a haptic/announcement signal only while nothing is audible (trap #20). The callers have already stopped
+     * the stimulus; the wait is a guard for a tone output whose flag lags. Dropped rather than emitted over a tone.
+     */
+    private suspend fun emitWhenSilent(signal: SessionSignal) {
+        if (deps.tone.playing.value) withTimeoutOrNull(SILENCE_WAIT_MS) { deps.tone.playing.first { !it } }
+        if (!isPulseAudibleNow) _signals.tryEmit(signal)
     }
 
     // ---- channel check (F3) ----------------------------------------------------------------------------------
@@ -539,11 +693,21 @@ class TestSession(
             else -> null
         }
 
+    /**
+     * Repeats the three-pulse beep in [ear] until answered. Answers count only once the step's FIRST beep has played
+     * out: the second tap of a double tap on the previous step lands before that and is ignored (no false
+     * WRONG_EAR, no +5 dB jump).
+     */
     private suspend fun playUntilChannelAnswer(ear: Ear, level: Double): ChannelAnswer = coroutineScope {
-        val answer = CompletableDeferred<ChannelAnswer>().also { channelRef.set(it) }
+        val answer = CompletableDeferred<ChannelAnswer>()
         val player = launch {
+            var armed = false
             while (true) {
-                deps.tone.play(StimulusSynth.threePulse(ear, CHECK_FREQ_HZ, level, sampleRate))
+                playStimulus(StimulusSynth.threePulse(ear, CHECK_FREQ_HZ, level, sampleRate))
+                if (!armed) {
+                    armed = true
+                    channelRef.set(answer)
+                }
                 deps.tone.playSilence(CHECK_GAP_MS)
             }
         }
@@ -560,7 +724,15 @@ class TestSession(
     private suspend fun calibrate(effectiveStart: Int, requestedStart: Int): CalibrationOutcomeData {
         val key = startDevice.headsetKey.value
         val maxIndex = deps.volume.maxIndex
-        deps.calibrations.get(key, maxIndex, deps.clock.monotonicMs())?.let { cached ->
+        // The calibration belongs to one person: keyed by the listener the test is for. A failed lookup skips reuse.
+        val listener = try {
+            deps.store.listenerFor(config.requestedProfileId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return calibrateFresh(key, null, cacheUsable = false, effectiveStart, requestedStart, maxIndex)
+        }
+        deps.calibrations.get(key, listener, maxIndex, deps.clock.monotonicMs())?.let { cached ->
             val eff = lock.lock(cached.index)
             if (eff == cached.index) {
                 lockTarget = eff
@@ -568,7 +740,19 @@ class TestSession(
             }
             lock.lock(effectiveStart) // reuse impossible: fall back to the measured start index
         }
-        val session = CalibrationSession(0, maxIndex, deps.volume::indexDb, startIndex = effectiveStart)
+        return calibrateFresh(key, listener, cacheUsable = true, effectiveStart, requestedStart, maxIndex)
+    }
+
+    private suspend fun calibrateFresh(
+        key: String,
+        listener: Long?,
+        cacheUsable: Boolean,
+        effectiveStart: Int,
+        requestedStart: Int,
+        maxIndex: Int,
+    ): CalibrationOutcomeData {
+        val minIndex = deps.platform.minVolumeIndex().coerceIn(0, maxIndex)
+        val session = CalibrationSession(minIndex, maxIndex, deps.volume::indexDb, startIndex = effectiveStart)
         var rerun = 0
         var refused = effectiveStart != requestedStart
         inCalibration = true
@@ -581,9 +765,11 @@ class TestSession(
                     is CalibrationOutcome.Accepted -> {
                         val r = outcome.result
                         lockTarget = r.index
-                        deps.calibrations.put(
-                            CachedCalibration(key, r.index, r.maxIndex, r.lRefDbfs, r.warning, deps.clock.monotonicMs()),
-                        )
+                        if (cacheUsable) {
+                            deps.calibrations.put(
+                                CachedCalibration(key, listener, r.index, r.maxIndex, r.lRefDbfs, r.warning, deps.clock.monotonicMs()),
+                            )
+                        }
                         return CalibrationOutcomeData(r.index, r.maxIndex, r.lRefDbfs, r.warning)
                     }
                     is CalibrationOutcome.Aborted -> throw AbortException(
@@ -633,19 +819,25 @@ class TestSession(
         }
     }
 
-    /** Plays the ascending ramp; returns the level at the tap or null when the ramp ran out (-10 dBFS cap). */
+    /**
+     * Plays the ascending ramp; returns the level at the tap or null when the ramp ran out (-10 dBFS cap). Taps in
+     * the first [CAL_TAP_GUARD_MS] of the ramp are ignored (double tap after a Rerun).
+     */
     private suspend fun runRamp(session: CalibrationSession, rerun: Int, volumeRefused: Boolean): Double? = coroutineScope<Double?> {
-        val tap = CompletableDeferred<Double>().also { tapRef.set(it) }
+        val tap = CompletableDeferred<Double>()
+        tapRef.set(null)
         try {
             var step = 0
             while (true) {
-                val level = session.rampLevelAtMs(step.toLong() * Calibration.STEP_MS) ?: return@coroutineScope null
+                val elapsedMs = step.toLong() * Calibration.STEP_MS
+                val level = session.rampLevelAtMs(elapsedMs) ?: return@coroutineScope null
                 currentRampLevel = level
                 if (step == 0) {
                     _state.value = SessionState.Calibrating(CalibrationPhase.RAMP, rerun, canTap = true, volumeRefused = volumeRefused)
                 }
+                if (elapsedMs >= CAL_TAP_GUARD_MS) tapRef.set(tap)
                 val cycle = StimulusSynth.calibrationCycle(level, sampleRate)
-                val player = launch { deps.tone.play(cycle) }
+                val player = launch { playStimulus(cycle) }
                 val tapped = select<Double?> {
                     tap.onAwait { it }
                     player.onJoin { null }
@@ -686,11 +878,15 @@ class TestSession(
             if (redoRequested.get()) continue
             val engine = run.engine
             if (engine.isUnreliable && !unreliableAcknowledged.get()) {
-                // End-of-test prompt: redo, or keep the results flagged unreliable.
+                // End-of-test prompt: redo, or keep the results flagged unreliable. The test is FINISHED here, so the
+                // pause timeout does not discard it: unanswered for 5 min = keep (saved with reliable = false).
                 testFinishedPrompt = true
                 raise(PauseReason.UNRELIABLE)
                 try {
                     awaitNotPaused()
+                } catch (e: AbortException) {
+                    if (e.reason != AbortReason.PAUSE_TIMEOUT) throw e
+                    resumeState = null
                 } finally {
                     testFinishedPrompt = false
                 }
@@ -734,10 +930,14 @@ class TestSession(
 
         val heard = presentQuickTrial(trial)
 
+        // The volume / headset event may not have been delivered yet: check the live values before the answer
+        // counts. A change interrupts this trial (the point restarts after the resume, F8).
+        ensureHeadsetUnchanged()
+        ensureVolumeUnchanged()
         engine.submit(heard)
         run.inFlight = null
         // Haptics / announcements only now: the stimulus has been stopped (trap #20).
-        _signals.tryEmit(SessionSignal.Responded(heard))
+        emitWhenSilent(SessionSignal.Responded(heard))
         _state.value = quickUi(engine, trial.freqHz, trialOpen = false)
         if (trial.isCatch && !unreliableAcknowledged.get() &&
             engine.catchTrialCount >= config.earlyReliabilityMinCatches && engine.isUnreliable
@@ -765,12 +965,15 @@ class TestSession(
     private suspend fun presentQuickTrial(trial: Trial): Boolean = coroutineScope {
         val answer = CompletableDeferred<Boolean>()
         val buffer = if (trial.isCatch) silentStimulus() else StimulusSynth.threePulse(trial.ear, trial.freqHz, trial.levelDbfs!!, sampleRate)
-        val player = launch { deps.tone.play(buffer) }
+        val player = launch { playStimulus(buffer) }
         responseRef.set(answer)
         try {
             val heard = answer.await()
-            if (deps.tone.playing.value) deps.tone.stopCurrent()
-            if (player.isActive) player.cancel() // queued but not audible yet, or still draining
+            responseRef.set(null)
+            // Unconditionally: a no-op when nothing is emitting; ramps the stimulus down and waits otherwise. Reading
+            // `playing` first would race the onset (queued but not yet under the head).
+            deps.tone.stopCurrent()
+            player.cancel() // still queued (never audible) or already finished
             player.join()
             heard
         } finally {
@@ -810,12 +1013,14 @@ class TestSession(
         _state.value = thoroughUi(engine, run)
         val action = presentDialRun(run)
         currentRun = null
+        ensureHeadsetUnchanged()
+        ensureVolumeUnchanged()
         when (action) {
             is DialAction.Confirm -> engine.confirm(action.position)
             is DialAction.Limit -> engine.reportLimit(action.position)
         }
         runTimes += deps.clock.monotonicMs() - t0
-        _signals.tryEmit(SessionSignal.RunConfirmed)
+        emitWhenSilent(SessionSignal.RunConfirmed)
         _state.value = SessionState.Testing(
             TestMode.THOROUGH, engine.progress.toFloat(), engine.completedPoints, engine.totalPoints,
             run.freqHz, trialOpen = false, dial = null, calibrationWarning = calWarning,
@@ -844,20 +1049,24 @@ class TestSession(
     )
 
     /**
-     * Loops the pulsed tone at the dial's current level until the user confirms. A level change takes effect at the
-     * next 425 ms loop period (each period is one pulse + gap; digital silence flows between enqueues).
+     * Loops the pulsed tone at the dial's current level until the user confirms: a 225 ms pulse buffer, then a
+     * SEPARATE 200 ms silent buffer, so [pulseAudible] drops in every gap and the dial's deferred haptic tick lands
+     * there (trap #20). A level change takes effect at the next pulse.
      */
     private suspend fun presentDialRun(run: DialRun): DialAction = coroutineScope {
         val action = CompletableDeferred<DialAction>().also { dialRef.set(it) }
         val looper = launch {
             while (true) {
                 val level = run.levelAt(dialPosition.value)
-                deps.tone.play(StimulusSynth.loopingPulsedTone(run.ear, run.freqHz, level, sampleRate))
+                playStimulus(StimulusSynth.singlePulse(run.ear, run.freqHz, level, sampleRate))
+                deps.tone.playSilence(StimulusSynth.GAP_MS)
             }
         }
         try {
             val a = action.await()
-            looper.cancel() // ramps the current period down; the stream continues in silence
+            dialRef.set(null)
+            deps.tone.stopCurrent() // ramps a pulse down and waits until it is silent (no-op in a gap)
+            looper.cancel()
             looper.join()
             a
         } finally {
@@ -894,6 +1103,9 @@ class TestSession(
         const val CHECK_GAP_MS = 1500
         const val CHECK_RETRY_PAUSE_MS = 1200
 
+        /** Calibration taps in the first second of each ramp are ignored (double taps; nobody hears -84 dBFS). */
+        const val CAL_TAP_GUARD_MS = 1000L
+
         const val QUICK_GAP_MIN_MS = 400
         const val QUICK_GAP_MAX_MS = 1200
         const val THOROUGH_PRE_RUN_MS = 800
@@ -901,5 +1113,8 @@ class TestSession(
         /** The mid-test "guessing" prompt waits for this many catch trials so one slip can't trigger it. */
         const val EARLY_RELIABILITY_MIN_CATCHES = 8
         const val MAX_STREAM_FAILURES = 3
+
+        /** Longest wait for the tone output to report silence before a haptic/announcement signal is dropped. */
+        const val SILENCE_WAIT_MS = 200L
     }
 }

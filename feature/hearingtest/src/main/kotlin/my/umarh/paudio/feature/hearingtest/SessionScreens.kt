@@ -53,6 +53,7 @@ internal fun SessionScreen(
         is SessionState.Paused -> PausedScreen(session, actions)
         SessionState.Saving, is SessionState.Finished -> Status(stringResource(R.string.hearingtest_saving))
         is SessionState.Aborted -> AbortedScreen(session, actions, onClose)
+        is SessionState.SaveFailed -> SaveFailedScreen(session, actions, onClose)
     }
 }
 
@@ -187,17 +188,18 @@ internal fun QuickScreen(state: SessionState.Testing, stimulusPlaying: Boolean, 
     Heading(stringResource(R.string.hearingtest_quick_heading))
     Text(stringResource(R.string.hearingtest_quick_instruction), style = MaterialTheme.typography.bodyLarge)
     ProgressBlock(state, stimulusPlaying)
+    // Always enabled: toggling `enabled` at stimulus onset would make TalkBack announce the change during the
+    // stimulus (trap #20). The session ignores taps between trials.
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         MorphingHearButton(
             onPress = { actions.respond(true) },
             stimulusPlaying = stimulusPlaying,
-            enabled = state.trialOpen,
+            enabled = true,
             label = stringResource(R.string.hearingtest_quick_heard),
             modifier = Modifier.testTag(Tags.HEAR),
         )
         OutlinedButton(
             onClick = { actions.respond(false) },
-            enabled = state.trialOpen,
             modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag(Tags.DIDNT),
         ) { Text(stringResource(R.string.hearingtest_quick_didnt), style = MaterialTheme.typography.titleMedium) }
     }
@@ -342,6 +344,37 @@ internal fun PausedScreen(state: SessionState.Paused, actions: HearingTestAction
         }
         TextButton(onClick = actions::abort, modifier = Modifier.heightIn(min = 48.dp)) {
             Text(stringResource(R.string.hearingtest_paused_exit))
+        }
+    }
+}
+
+// ---- save failed ------------------------------------------------------------------------------------------------
+
+@Composable
+internal fun SaveFailedScreen(state: SessionState.SaveFailed, actions: HearingTestActions, onClose: () -> Unit) {
+    Column(Modifier.testTag(Tags.SAVE_FAILED), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Heading(stringResource(R.string.hearingtest_save_failed_heading))
+        // Nothing plays any more (the audio was closed before this state), so a polite live region is safe.
+        Text(
+            stringResource(
+                if (state.profileMissing) R.string.hearingtest_save_failed_profile_missing else R.string.hearingtest_save_failed_text,
+            ),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        )
+        if (state.profileMissing) {
+            Button(
+                onClick = actions::saveToActiveProfile,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag(Tags.SAVE_ACTIVE),
+            ) { Text(stringResource(R.string.hearingtest_save_failed_use_active)) }
+        } else {
+            Button(
+                onClick = actions::retrySave,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag(Tags.SAVE_RETRY),
+            ) { Text(stringResource(R.string.hearingtest_save_failed_retry)) }
+        }
+        TextButton(onClick = onClose, modifier = Modifier.heightIn(min = 48.dp)) {
+            Text(stringResource(R.string.hearingtest_save_failed_discard))
         }
     }
 }

@@ -1,6 +1,7 @@
 package my.umarh.paudio.feature.hearingtest
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,7 +26,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -49,6 +52,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import my.umarh.paudio.audio.device.NoiseLevel
 import my.umarh.paudio.core.model.TestMode
@@ -56,7 +60,7 @@ import my.umarh.paudio.designsystem.PAudioIcon
 import my.umarh.paudio.designsystem.PAudioIcons
 
 /**
- * Type-safe navigation destination of the hearing-test flow (DECISIONS §20).
+ * Type-safe navigation destination of the hearing-test flow (DECISIONS §23).
  *
  * [profileId] `null` = the active listener's profile for the CURRENT headset: the listener (a default one when none
  * exists yet), the headset and the profile are created when the test is saved. Non-null = retest that profile; the
@@ -95,6 +99,8 @@ interface HearingTestActions {
     fun keepGoing()
     fun abort()
     fun tryAgain()
+    fun retrySave()
+    fun saveToActiveProfile()
 }
 
 internal object Tags {
@@ -118,6 +124,9 @@ internal object Tags {
     const val PAUSED = "ht_paused"
     const val RESUME = "ht_resume"
     const val ABORTED = "ht_aborted"
+    const val SAVE_FAILED = "ht_save_failed"
+    const val SAVE_RETRY = "ht_save_retry"
+    const val SAVE_ACTIVE = "ht_save_active"
     const val EXIT_DIALOG = "ht_exit_dialog"
 }
 
@@ -129,8 +138,12 @@ internal fun HearingTestScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val playing by viewModel.stimulusPlaying.collectAsStateWithLifecycle()
-    // Backgrounding pauses the test (F8); ON_STOP also covers screen-off and rotation.
-    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onStopped() }
+    // Backgrounding pauses the test (F8); ON_STOP also covers screen-off. A configuration change (rotation) also
+    // stops the activity, but the ViewModel and its session survive it: that must not pause the test.
+    val activity = LocalActivity.current
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        if (activity?.isChangingConfigurations != true) viewModel.onStopped()
+    }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onStarted() }
     val owner = LocalLifecycleOwner.current
     LaunchedEffect(viewModel, owner) {
@@ -164,7 +177,7 @@ internal fun HearingTestContent(
     SuppressSoundEffects()
     var showExit by remember { mutableStateOf(false) }
     val session = (state as? HearingTestUiState.Active)?.session
-    val terminal = session is SessionState.Finished || session is SessionState.Aborted
+    val terminal = session?.isAfterCleanup == true
 
     val handleBack: () -> Unit = {
         when {
@@ -175,14 +188,18 @@ internal fun HearingTestContent(
     }
     BackHandler(onBack = handleBack)
 
-    // Trap #20: haptics and accessibility announcements only AFTER a response, when the stimulus has stopped.
+    // Trap #20: haptics and accessibility announcements only AFTER a response, when the stimulus has stopped. The
+    // session emits signals only in silence; the UI additionally waits for silence in case a signal is collected
+    // late (after the next stimulus started), so neither ever coincides with a stimulus.
     val haptics = LocalHapticFeedback.current
     var ack by remember { mutableStateOf("") }
     val heardText = stringResource(R.string.hearingtest_ack_heard)
     val notHeardText = stringResource(R.string.hearingtest_ack_not_heard)
     val confirmedText = stringResource(R.string.hearingtest_ack_confirmed)
+    val playingNow by rememberUpdatedState(stimulusPlaying)
     LaunchedEffect(signals) {
         signals.collect { s ->
+            snapshotFlow { playingNow }.first { !it }
             when (s) {
                 is SessionSignal.Responded -> {
                     haptics.performHapticFeedback(HapticFeedbackType.ContextClick)

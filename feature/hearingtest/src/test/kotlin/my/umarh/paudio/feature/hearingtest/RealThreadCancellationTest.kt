@@ -75,8 +75,7 @@ private class StreamBackedTone(private val bypassHeld: () -> Boolean, private va
 
     override suspend fun playSilence(ms: Int) {
         if (!bypassHeld()) violations += "playSilence without bypass"
-        val n = e().sampleRate.toLong() * ms / 1000
-        e().play(StereoBuffer(FloatArray(n.toInt()), FloatArray(n.toInt()), e().sampleRate))
+        e().playSilence(ms)
     }
 
     override suspend fun stopCurrent() = e().stopCurrent()

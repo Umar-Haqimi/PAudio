@@ -32,6 +32,8 @@ class Rig(
     val cache: CalibrationCache = CalibrationCache(),
     bypassOverride: BypassController? = null,
     toneFactory: ((() -> Boolean, EventLog) -> HookedTone)? = null,
+    val gate: SessionGate = SessionGate(),
+    requestedProfileId: Long? = null,
 ) {
     val log = EventLog()
     val trace = TraceBypass(log)
@@ -41,11 +43,12 @@ class Rig(
     val devices = FakeOutputDevices(FakeOutputDevices.WIRED_HEADPHONES)
     val focus = FakeFocus()
     val store = FakeStore()
-    val deps = SessionDeps(tone, volume, bypass, devices, focus, FakePlatform(), FakeClock(clockMs), store, cache)
+    val platform = FakePlatform()
+    val deps = SessionDeps(tone, volume, bypass, devices, focus, platform, FakeClock(clockMs), store, cache, gate)
     val scope = CoroutineScope(SupervisorJob() + sessionDispatcher)
     val session = TestSession(
         SessionConfig(
-            mode, ancOn = true, requestedProfileId = null, random = Random(seed), pauseTimeoutMs = pauseTimeoutMs,
+            mode, ancOn = true, requestedProfileId = requestedProfileId, random = Random(seed), pauseTimeoutMs = pauseTimeoutMs,
             earlyReliabilityMinCatches = earlyMinCatches,
         ),
         deps,
@@ -62,9 +65,11 @@ class Rig(
             pauseTimeoutMs: Long = SessionConfig.DEFAULT_PAUSE_TIMEOUT_MS,
             earlyMinCatches: Int = TestSession.EARLY_RELIABILITY_MIN_CATCHES,
             cache: CalibrationCache = CalibrationCache(),
+            gate: SessionGate = SessionGate(),
+            requestedProfileId: Long? = null,
         ) = Rig(
             mode, { scheduler.currentTime }, StandardTestDispatcher(scheduler), timed, seed, pauseTimeoutMs,
-            earlyMinCatches = earlyMinCatches, cache = cache,
+            earlyMinCatches = earlyMinCatches, cache = cache, gate = gate, requestedProfileId = requestedProfileId,
         )
     }
 }
@@ -110,7 +115,8 @@ class Brain(
         val st = sess().state.value
         val info = b.info()
         when {
-            st is SessionState.ChannelCheck -> {
+            // Answers count only once the step's first beep has played: a person answers the repeat.
+            st is SessionState.ChannelCheck && sess().channelAnswerArmed -> {
                 val correct = if (info.ear == Ear.LEFT) ChannelAnswer.LEFT else ChannelAnswer.RIGHT
                 val wrong = if (correct == ChannelAnswer.LEFT) ChannelAnswer.RIGHT else ChannelAnswer.LEFT
                 sess().answerChannel(if (wrongEarFirst && channelAnswers++ == 0) wrong else correct)

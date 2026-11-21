@@ -48,7 +48,11 @@ class StreamEngine(
     @Volatile var sinkRecreations: Int = 0
         private set
 
-    /** True while a stimulus is audible (playback head inside it). Updated once per chunk (~10 ms). */
+    /**
+     * True while an AUDIBLE stimulus is under the playback head. Silent segments ([playSilence], or `play(...,
+     * audible = false)`) never set it. Updated once per chunk (~10 ms). The head position does not include the
+     * sink's own output latency (Bluetooth adds roughly 100-300 ms after the head; HARDWARE_TEST item).
+     */
     val playing: StateFlow<Boolean> get() = playingFlow
 
     /** True once closed or failed: the engine can no longer play and must be replaced. */
@@ -139,18 +143,24 @@ class StreamEngine(
     }
 
     private fun poll(head: Long) {
+        // Pass 1: is an AUDIBLE stimulus under the playback head? Finished ones and silent gaps do not count.
         var audible = false
         for (w in waiters) {
             val s = w.first
             val end = s.endFrame
-            if (end >= 0 && head >= end) {
+            if (s.audible && s.startFrame in 0..head && !(end in 0..head)) audible = true
+        }
+        // Published BEFORE the finished callers are woken: a caller resumed by play()/stopCurrent() never reads a
+        // stale `true` (trap #20: haptics/announcements are gated on this flag right after a stimulus).
+        playingFlow.value = audible
+        // Pass 2: wake the callers whose stimulus the playback head has passed.
+        for (w in waiters) {
+            val end = w.first.endFrame
+            if (end in 0..head) {
                 waiters.remove(w)
                 w.second.complete(Unit)
-            } else if (s.startFrame in 0..head) {
-                audible = true
             }
         }
-        playingFlow.value = audible
     }
 
     private fun failAll(t: Throwable) {
@@ -161,11 +171,14 @@ class StreamEngine(
         }
     }
 
-    /** Suspends until [stimulus] has been fully played out. Cancellation ramps it down to silence. */
-    suspend fun play(stimulus: StereoBuffer) {
+    /**
+     * Suspends until [stimulus] has been fully played out. Cancellation ramps it down to silence. [audible] false
+     * schedules a timed silent segment that never sets [playing].
+     */
+    suspend fun play(stimulus: StereoBuffer, audible: Boolean = true) {
         check(started.get() && !isClosed) { "ToneOutput not open" }
         require(stimulus.sampleRate == sampleRate) { "sample rate ${stimulus.sampleRate} != stream $sampleRate" }
-        val s = Stimulus(stimulus)
+        val s = Stimulus(stimulus, audible)
         val done = CompletableDeferred<Unit>()
         val entry = s to done
         waiters += entry
@@ -181,6 +194,13 @@ class StreamEngine(
             if (scheduler.cancel(s) && s.startFrame < 0) waiters.remove(entry)
             throw e
         }
+    }
+
+    /** Plays [ms] of explicit digital silence (sample-timed; never counts as [playing]). */
+    suspend fun playSilence(ms: Int) {
+        val n = (sampleRate.toLong() * ms / 1000).toInt()
+        if (n <= 0) return
+        play(StereoBuffer(FloatArray(n), FloatArray(n), sampleRate), audible = false)
     }
 
     /** Ramps the stimulus that is currently emitting to silence; returns when the ramp has been played out. */

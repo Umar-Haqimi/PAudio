@@ -157,6 +157,84 @@ class HearingTestViewModelTest {
         assertThat(s.rig.tone.isOpen).isFalse()
     }
 
+    /** Environment checks that suspend until released, so the double tap lands while the first start is validating. */
+    private class SlowEnv : my.umarh.paudio.core.model.EnvironmentChecks {
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val calls = AtomicInteger(0)
+        override suspend fun snapshot(): EnvSnapshot {
+            if (calls.incrementAndGet() > 1) release.await() // the first call feeds the Prep page
+            return EnvSnapshot(false, 0f, false, false)
+        }
+    }
+
+    @Test
+    fun doubleTapOnStartStartsOneSessionWithOneBypassToken() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val rig = Rig.virtual(testScheduler, TestMode.QUICK, timed = true)
+        val env = SlowEnv()
+        val vm = HearingTestViewModel(null, rig.deps, env, CountingNoiseMeter(), SessionDispatcherFactory { rig.sessionDispatcher }, { Random(2) })
+        val state = collectState(vm)
+        val brain = Brain(rig, normalListener(), scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Job() + StandardTestDispatcher(testScheduler)), sessionProvider = { vm.currentSession!! })
+        brain.autoQuick = false
+        brain.install()
+        vm.chooseMode(TestMode.QUICK)
+        runCurrent()
+        assertThat((state() as HearingTestUiState.Prep).canStart).isTrue()
+        vm.startTest()
+        vm.startTest() // second tap while the first is still suspended in the environment check
+        runCurrent()
+        val prep = state() as HearingTestUiState.Prep
+        assertThat(prep.starting).isTrue()
+        assertThat(prep.canStart).isFalse() // Start is disabled while starting
+        vm.startTest() // a third tap, after recomposition would have disabled the button anyway
+        env.release.complete(Unit)
+        runCurrent()
+        advanceTimeBy(20_000)
+        runCurrent()
+        val session = vm.currentSession!!
+        assertThat(state()).isInstanceOf(HearingTestUiState.Active::class.java)
+        assertThat(rig.trace.acquired.get()).isEqualTo(1)
+        assertThat(rig.trace.openCount).isEqualTo(1)
+        assertThat(rig.tone.openCount.get()).isEqualTo(1)
+        session.cancelAndJoin()
+        advanceUntilIdle()
+        assertThat(rig.trace.openCount).isEqualTo(0)
+        assertThat(vm.currentSession).isSameInstanceAs(session)
+    }
+
+    @Test
+    fun tryAgainStartsTheNewSessionOnlyAfterTheOldOnesCleanup() = runTest {
+        val s = setup(timed = true)
+        val state = collectState(s.vm)
+        val brain = Brain(s.rig, normalListener(), sessionProvider = { s.vm.currentSession!! }, scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Job() + StandardTestDispatcher(testScheduler)))
+        brain.autoQuick = false
+        brain.install()
+        s.vm.chooseMode(TestMode.QUICK)
+        runCurrent()
+        s.vm.startTest()
+        advanceTimeBy(20_000)
+        runCurrent()
+        val old = s.vm.currentSession!!
+        s.vm.tryAgain() // cancels the old session; its cleanup runs on the session thread
+        runCurrent()
+        s.vm.startTest()
+        advanceTimeBy(20_000)
+        runCurrent()
+        val fresh = s.vm.currentSession!!
+        assertThat(fresh).isNotSameInstanceAs(old)
+        assertThat(old.state.value).isEqualTo(SessionState.Aborted(AbortReason.USER))
+        assertThat(state()).isInstanceOf(HearingTestUiState.Active::class.java)
+        // tokens never overlapped: the old one was released before the new one was taken
+        val events = s.rig.log.events
+        val firstRelease = events.indexOf("bypass.release")
+        val secondAcquire = events.withIndex().filter { it.value == "bypass.acquire" }.map { it.index }[1]
+        assertThat(firstRelease).isLessThan(secondAcquire)
+        assertThat(s.rig.trace.openCount).isEqualTo(1)
+        fresh.cancelAndJoin()
+        advanceUntilIdle()
+        assertThat(s.rig.trace.openCount).isEqualTo(0)
+    }
+
     @Test
     fun clearingTheViewModelCancelsTheSessionAndCleansUp() = runTest {
         val s = setup(timed = true)

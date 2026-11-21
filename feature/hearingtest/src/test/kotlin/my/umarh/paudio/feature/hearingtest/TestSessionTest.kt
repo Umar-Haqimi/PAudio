@@ -33,12 +33,22 @@ class TestSessionTest {
     /** Foreground scope on the test scheduler (backgroundScope tasks are not run by advanceUntilIdle). */
     private fun TestScope.brainScope() = CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.test.StandardTestDispatcher(testScheduler))
 
-    /** [expectedVolume]: VolumeLock never RAISES a volume the user lowered meanwhile (hearing safety). */
-    private fun Rig.assertCleanedUp(expectedVolume: Int = originalVolume) {
+    /**
+     * [expectedVolume]: VolumeLock never RAISES a volume the user lowered meanwhile (hearing safety).
+     * [expectedOpens]: trap #5 (one continuous stream per session, DECISIONS §23/§26.3): the stream is opened exactly
+     * once, also across pauses and resumes; only a LOST stream is re-opened. It is closed exactly once, in the cleanup.
+     * null skips the count (sessions cancelled at a random point).
+     */
+    private fun Rig.assertCleanedUp(expectedVolume: Int = originalVolume, expectedOpens: Int? = 1) {
         assertThat(tone.violations).isEmpty()
         assertThat(tone.isOpen).isFalse()
+        assertThat(focus.held).isFalse()
         assertThat(bypass.bypassed.value).isFalse()
         assertThat(volume.index()).isEqualTo(expectedVolume)
+        if (expectedOpens != null) {
+            assertThat(tone.openCount.get()).isEqualTo(expectedOpens)
+            assertThat(tone.closeCount.get()).isEqualTo(1)
+        }
         if (tone.openCount.get() > 0) {
             assertThat(log.indexOf("tone.close")).isLessThan(log.indexOf("bypass.release"))
             assertThat(log.indexOf("bypass.acquire")).isLessThan(log.indexOf("tone.open"))
@@ -175,7 +185,7 @@ class TestSessionTest {
             runCurrent()
             rig.session.cancelAndJoin()
             bs.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
-            try { rig.assertCleanedUp(if (lowered) 2 else rig.originalVolume) } catch (e: AssertionError) { throw AssertionError("i=$i mode=$mode total=$total state=${rig.session.state.value} setCalls=${rig.volume.setCalls} log=${rig.log.events}", e) }
+            try { rig.assertCleanedUp(if (lowered) 2 else rig.originalVolume, expectedOpens = null); assertThat(rig.tone.openCount.get()).isAtMost(1) } catch (e: AssertionError) { throw AssertionError("i=$i mode=$mode total=$total state=${rig.session.state.value} setCalls=${rig.volume.setCalls} log=${rig.log.events}", e) }
             val st = rig.session.state.value
             if (st == SessionState.Aborted(AbortReason.AUDIO_ERROR)) error("i=$i mode=$mode err=${rig.session.lastFailure?.stackTraceToString()?.take(1200)}")
             if (rig.trace.acquired.get() > 0) assertThat(st).isEqualTo(SessionState.Aborted(AbortReason.USER)) // err
@@ -456,13 +466,26 @@ class TestSessionTest {
         val lRef = req.test.lRef.toDouble()
         val persistedForKey = req.trials.filter { !it.isCatch && "${it.ear}@${it.freqHz}" == key }
         val first = persistedForKey.first()
-        // the point was restarted from scratch: its first persisted trial is a fresh staircase start
+        // The point was restarted from scratch: its first persisted trial is a fresh staircase start. The start rule
+        // (HughsonWestlakeStaircase.startLevel) depends on whether the other ear's point at this frequency had
+        // finished when the new staircase was created (at `first.seq`): then 15 dB above that threshold, else
+        // L_exp + 20; clamped to [L_min, L_max]. Always checked.
         val b = Iso389_7.bounds(first.freqHz, lRef)
-        val otherDone = req.trials.any { it.ear != first.ear && it.freqHz == first.freqHz }
-        if (!otherDone) assertThat(first.levelDbfs!!.toDouble()).isWithin(0.01).of(minOf(b.lMax, b.lExp + 20))
-        // trials of the earlier presentations of this point are gone; others are untouched (contiguous seq)
+        val otherTrials = req.trials.filter { !it.isCatch && it.ear != first.ear && it.freqHz == first.freqHz }
+        val otherFinishedBefore = otherTrials.isNotEmpty() && otherTrials.all { it.seq < first.seq }
+        val expectedStart = if (otherFinishedBefore) {
+            req.thresholds.single { it.ear != first.ear && it.freqHz == first.freqHz }.levelDbfs!!.toDouble() + 15.0
+        } else {
+            b.lExp + 20.0
+        }.coerceIn(b.lMin, b.lMax)
+        assertThat(first.levelDbfs!!.toDouble()).isWithin(0.01).of(expectedStart)
+        // Exactly the presentations before the pause are gone: every persisted trial of the point was presented
+        // after the resume (`counts` kept counting after the pause; the interrupted one was never counted).
+        val (_, beforePause) = pending!!
+        assertThat(beforePause).isAtLeast(2)
+        assertThat(persistedForKey.size).isEqualTo(counts[key]!! - beforePause)
+        // other points are untouched (contiguous seq)
         assertThat(req.trials.map { it.seq }).isEqualTo((1..req.trials.size).toList())
-        assertThat(persistedForKey.size).isLessThan(counts[key]!! + 20)
         assertThat(interruptedAfter).isGreaterThan(0)
     }
 
@@ -563,8 +586,8 @@ class TestSessionTest {
         rig.session.start()
         advanceUntilIdle()
         rig.finished()
-        assertThat(rig.tone.openCount.get()).isAtLeast(1)
-        rig.assertCleanedUp()
+        // exactly one re-open after the lost stream (and no other open, close or per-stimulus track)
+        rig.assertCleanedUp(expectedOpens = 2)
     }
 
     @Test
@@ -574,7 +597,7 @@ class TestSessionTest {
         rig.session.start()
         advanceUntilIdle()
         assertThat(rig.session.state.value).isEqualTo(SessionState.Aborted(AbortReason.AUDIO_ERROR))
-        rig.assertCleanedUp()
+        rig.assertCleanedUp(expectedOpens = 1 + TestSession.MAX_STREAM_FAILURES) // the first open + one re-open per allowed loss
     }
 
     @Test
@@ -589,13 +612,45 @@ class TestSessionTest {
     }
 
     @Test
-    fun saveFailureAbortsAfterCleanup() = runTest {
+    fun saveFailureKeepsTheResultsAfterCleanupAndRetrySavesThem() = runTest {
         val rig = quickRig()
         rig.store.failSave = true
         Brain(rig, normalListener()).install()
         rig.session.start()
         advanceUntilIdle()
-        assertThat(rig.session.state.value).isEqualTo(SessionState.Aborted(AbortReason.SAVE_FAILED))
+        assertThat(rig.session.state.value).isEqualTo(SessionState.SaveFailed(profileMissing = false))
+        rig.assertCleanedUp() // audio, volume, focus and token are released before the user decides
+        // still failing: stays on SaveFailed, results kept
+        rig.session.retrySave()
+        assertThat(rig.session.state.value).isEqualTo(SessionState.SaveFailed(profileMissing = false))
+        rig.store.failSave = false
+        // a double tap on Retry stores the test once
+        val a = launch { rig.session.retrySave() }
+        val b = launch { rig.session.retrySave() }
+        advanceUntilIdle()
+        a.join(); b.join()
+        assertThat(rig.store.saved).hasSize(1)
+        assertThat(rig.session.state.value).isEqualTo(SessionState.Finished(42L))
+        assertThat(rig.store.saved.single().thresholds).hasSize(18)
+        assertThat(rig.trace.acquired.get()).isEqualTo(1) // the retry never touched the engine bypass
+        rig.assertCleanedUp()
+    }
+
+    @Test
+    fun aDeletedProfileIsNeverSavedElsewhereSilently() = runTest {
+        val rig = Rig.virtual(testScheduler, TestMode.QUICK, timed = false, seed = 3, earlyMinCatches = 100_000, requestedProfileId = 7)
+        rig.store.profileMissing = true
+        Brain(rig, normalListener()).install()
+        rig.session.start()
+        advanceUntilIdle()
+        assertThat(rig.session.state.value).isEqualTo(SessionState.SaveFailed(profileMissing = true))
+        assertThat(rig.store.saved).isEmpty()
+        rig.session.retrySave() // a plain retry still refuses
+        assertThat(rig.session.state.value).isEqualTo(SessionState.SaveFailed(profileMissing = true))
+        assertThat(rig.store.saved).isEmpty()
+        rig.session.retrySave(useActiveProfile = true) // the user's explicit choice
+        assertThat(rig.session.state.value).isInstanceOf(SessionState.Finished::class.java)
+        assertThat(rig.store.saved.single().requestedProfileId).isNull()
         rig.assertCleanedUp()
     }
 
