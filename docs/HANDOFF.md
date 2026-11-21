@@ -41,7 +41,87 @@ loudness-matched A/B, EQ graph) → preference test (bisection + fine-tune) → 
 foreground service applying the system-wide DynamicsProcessing EQ.
 
 ### 1.2 Open review findings (fix these first)
-<!-- M9A-REVIEW -->
+Opus reviewed M9a at f4cd05c (verdict: request changes). These findings are **not fixed yet**; the user asked to
+stop spawning agents. All paths are under `feature/hearingtest/src/main/kotlin/.../hearingtest/` unless noted. Each was
+confirmed by the reviewer with throwaway probe tests (not committed).
+
+**MUST-FIX**
+1. **Resume during the channel check (or calibration) leaves the Paused screen up while tones play.**
+   - **Where:** `TestSession.kt` ~512 and ~419-442.
+   - **Cause:** `channelCheck` publishes `ChannelCheck` before `pausable{}`. `awaitNotPaused` publishes `Paused`, but
+     when the reasons clear nothing republishes the previous state. The user is stuck with no Left/Right buttons and
+     the only way out is Exit.
+   - **Guaranteed trigger:** focus refused at start (a call is active). Also likely after volume-up on a quiet beep.
+   - **Quick is affected too:** `Paused` stays up through the 400-1200 ms gap and swaps exactly at stimulus onset
+     (trap #20).
+   - **Fix:** remember the last non-Paused state in `awaitNotPaused` and republish it (Quick with `trialOpen=false`).
+   - **Tests:** add pause tests in ChannelCheck and Calibrating.
+2. **P0 leak: a double tap on "Start the test" starts two sessions.**
+   - **Where:** `HearingTestViewModel.kt` ~249-276.
+   - **Cause:** the `session != null` guard runs before a `launch` that suspends in `env.snapshot()`/`store.check`. The
+     orphan session holds a bypass token forever and shares the singleton tone output, volume controller and focus
+     monitor.
+   - **Fix:** set a synchronous `starting`/`startJob` flag, disable Start while it is set, and add a process-wide
+     session mutex so a new session waits for the old one's `finally`.
+   - **Tests:** a VM test that calls `startTest()` twice.
+3. **A `resume()` that runs after cleanup re-raises the volume and keeps exclusive audio focus.**
+   - **Where:** `TestSession.kt` ~239-241 and ~397-417.
+   - **Cause:** `resumeNow` has no liveness check, and queued executor tasks still run after shutdown.
+   - **Trigger:** Exit then Continue within the up-to-500 ms writer join, or Continue racing the pause timeout.
+   - **Fix:** set a `cleanupStarted` flag at the top of `run()`'s finally; `resumeNow` returns if it is set or
+     `job?.isActive != true`.
+4. **(Likely MUST-FIX, trap #20) The Thorough dial's deferred haptic tick lands at the next pulse onset, not in the
+   gap.**
+   - **Where:** `LevelDial.kt` ~53-64; `audio/tone/.../StreamEngine.kt` `poll` ~141-154;
+     `StimulusSynth.loopingPulsedTone` ~98-104.
+   - **Cause:** `playing` stays true through each 425 ms period (225 ms pulse + 200 ms gap) and drops only for the
+     writer's lead time just before the next pulse.
+   - **Fix:** the session exposes its own `pulseAudible` flow, with pulse and gap played as separate buffers, and the
+     tick fires when the flag drops.
+   - **On Bluetooth:** head position ignores sink latency (consider `AudioTrack.getTimestamp`; HARDWARE_TEST item).
+
+**SHOULD-FIX**
+1. **Calibration double tap** after a Rerun registers at about -90 dBFS and lowers the volume in the wrong
+   direction. Fix: ignore taps in roughly the first 1 s of each ramp (`TestSession.kt` ~576-646).
+2. **Channel-check double taps:** answers are accepted before the step's first beep (false WRONG_EAR, +10 dB jumps).
+   Fix: accept answers only after the first beep (`TestSession.kt` ~510-556).
+3. **An answer can be recorded before the volume/headset event arrives.** Fix: in `quickStep` (~725-748) check the
+   live volume index and the headset synchronously before `engine.submit`.
+4. **Abort while unplugged restores the volume on the wrong device** (`audio/tone/VolumeLogic.kt` ~100-113). Fix:
+   defer the restore until the start device reconnects, and never write to the speaker.
+5. **Calibration cache key lacks the listener** (`Ports.kt` ~94-107). Retesting another listener within 30 min
+   reuses `L_ref`. Fix: add the listener id to the key.
+6. **The end-of-test "unreliable" prompt counts toward the 5-min pause timeout** and can discard a finished test.
+   Fix: on timeout save with `reliable=false`, or release the audio and token while the prompt shows.
+7. **Results "Test again" drops the profileId** (`app/.../navigation/PAudioNavHost.kt` ~71). Fix: pass the test's
+   profileId to `HearingTestRoute(profileId)`.
+8. **Quick buttons toggle `enabled` at stimulus onset** (`SessionScreens.kt` ~194/200), so TalkBack may announce the
+   change. Fix: keep the buttons enabled; the session already ignores taps between trials.
+
+**NIT**
+- **Quick trial cancel:** call `stopCurrent()` unconditionally in `presentQuickTrial`.
+- **Stream failures:** count consecutive ones, not session-wide.
+- **Rotation:** ON_STOP on rotation pauses the test (`HearingTestScreen.kt` ~133).
+- **`RepositoryTestStore` (~50):**
+  - a deleted profile silently saves to the active listener;
+  - the listener, headset and profile inserts and the test save are not in one transaction.
+- **Save failure:** keep the `SaveRequest` and offer a retry.
+- **`LevelDial` drag:** it can lose detents when events batch.
+- **Stale references:** "DECISIONS §20" should read §23 in four files.
+- **`CalibrationSession(minIndex = 0)`:** it ignores the real stream minimum.
+
+**Test-quality notes:**
+- `resumeRestartsOnlyTheInterruptedPoint` asserts little: its main check is skipped when the other ear was done.
+- `ScriptedTone.playing` differs from `StreamEngine`: `playSilence` never sets it.
+
+**Checked OK by the reviewer:**
+- P0 order: token before `tone.open`; cleanup tone → volume → focus → token; terminal state after cleanup.
+- Every exit path goes through the `finally`.
+- CancellationException is rethrown before every broad catch.
+- Responses are attributed per trial.
+- Procedure levels, the guessing prompt and the saved fields match §23.
+- The `HearingTestRoute`/`ResultsRoute` hand-off is correct.
+- Copy rules are kept.
 
 ### 1.3 Known gaps and nits (lower priority)
 - **M9a:** if the process dies mid-test, the calibrated volume is left as is, because the original index is not
