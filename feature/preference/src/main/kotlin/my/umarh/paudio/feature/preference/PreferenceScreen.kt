@@ -191,8 +191,12 @@ internal fun PreferenceScreenContent(ui: PreferenceUiState, actions: PreferenceA
     if (confirmLeave) {
         AlertDialog(
             onDismissRequest = { confirmLeave = false },
-            title = { Text(stringResource(R.string.preference_discard_title)) },
-            text = { Text(stringResource(R.string.preference_discard_body)) },
+            title = {
+                Text(stringResource(if (ui.fineTuneOnly) R.string.preference_discard_finetune_title else R.string.preference_discard_title))
+            },
+            text = {
+                Text(stringResource(if (ui.fineTuneOnly) R.string.preference_discard_finetune_body else R.string.preference_discard_body))
+            },
             confirmButton = {
                 TextButton(
                     onClick = {

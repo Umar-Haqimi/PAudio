@@ -652,6 +652,7 @@ class PreferenceViewModelTest {
         val r = reentry()
         val b = checkNotNull(r.data.baseline)
         assertThat(r.ui.phase).isEqualTo(PrefPhase.FINE_TUNE)
+        assertThat(r.ui.fineTuneOnly).isTrue() // the leave dialog speaks of changes, not answers
         assertThat(r.ui.strength).isEqualTo(0.6f)
         assertThat(listOf(r.ui.gB, r.ui.gP, r.ui.gT)).containsExactly(2.5f, -1.5f, 3.0f).inOrder()
         assertThat(r.ui.personalized).isTrue()
@@ -730,6 +731,7 @@ class PreferenceViewModelTest {
         r.vm.begin()
         settle()
         assertThat(r.ui.phase).isEqualTo(PrefPhase.ROUND)
+        assertThat(r.ui.fineTuneOnly).isFalse()
         assertThat(r.ui.roundNumber).isEqualTo(1)
         assertThat(r.ui.axis).isEqualTo(PreferenceBisection(Random(SEED)).currentRound!!.axis)
         assertThat(r.backend.players.first().released).isTrue() // old audio released, a new one prepared

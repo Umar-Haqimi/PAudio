@@ -8,6 +8,8 @@
 
     <string name="preference_discard_title">Leave the preference test?</string>
     <string name="preference_discard_body">Your answers so far won\'t be saved.</string>
+    <string name="preference_discard_finetune_title">Leave fine-tuning?</string>
+    <string name="preference_discard_finetune_body">Your changes won\'t be saved.</string>
     <string name="preference_discard_confirm">Leave</string>
     <string name="preference_discard_cancel">Keep going</string>
 

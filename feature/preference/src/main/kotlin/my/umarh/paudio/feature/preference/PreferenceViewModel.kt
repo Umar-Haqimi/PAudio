@@ -64,6 +64,8 @@ data class PreferenceUiState(
     val saving: Boolean = false,
     val saved: Boolean = false,
     val saveError: Boolean = false,
+    /** True when the screen opened straight on the fine-tune (re-entry) and no A/B rounds have run this session. */
+    val fineTuneOnly: Boolean = false,
 )
 
 /**
@@ -134,6 +136,7 @@ class PreferenceViewModel @Inject constructor(
                     gP = b.gP.toFloat().coerceIn(FineTuneRange.of(PreferenceAxis.PRESENCE).toFloatRange()),
                     gT = b.gT.toFloat().coerceIn(FineTuneRange.of(PreferenceAxis.TREBLE).toFloatRange()),
                     personalized = true,
+                    fineTuneOnly = true,
                 )
                 refreshCurve()
                 launchPrepare() // no-op until the screen is STARTED (P0)
@@ -157,6 +160,7 @@ class PreferenceViewModel @Inject constructor(
         records.clear()
         clipOverride = null
         ranRounds = true
+        _ui.update { it.copy(fineTuneOnly = false) }
         startedAt = data.nowMs()
         beginRound()
     }
