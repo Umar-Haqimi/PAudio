@@ -58,17 +58,25 @@ class PreferenceViewModelTest {
         class Saved(val profileId: Long, val startedAt: Long, val test: Triple<Float, Float, Float>, val rounds: String, val settings: ProfileSettings)
 
         val saves = mutableListOf<Saved>()
+        val settingsSaves = mutableListOf<Pair<Long, ProfileSettings>>()
+        var failLoad = false
         var requested: Long? = -1
         var failSave = false
 
         override suspend fun load(profileId: Long?): PreferenceBaseline? {
             requested = profileId
+            if (failLoad) error("db gone")
             return baseline
         }
 
         override suspend fun save(profileId: Long, startedAt: Long, test: Triple<Float, Float, Float>, roundsJson: String, settings: ProfileSettings) {
             if (failSave) error("disk full")
             saves += Saved(profileId, startedAt, test, roundsJson, settings)
+        }
+
+        override suspend fun saveSettings(profileId: Long, settings: ProfileSettings) {
+            if (failSave) error("disk full")
+            settingsSaves += profileId to settings
         }
 
         override fun nowMs() = 1_700_000_000_000L
@@ -116,7 +124,7 @@ class PreferenceViewModelTest {
         val ui get() = vm.ui.value
     }
 
-    private fun baseline() = PreferenceBaseline(
+    private fun baseline(hasPrefTest: Boolean = false) = PreferenceBaseline(
         profileId = 3,
         hlLeft = DoubleArray(9) { it * 5.0 },
         hlRight = DoubleArray(9) { it * 3.0 },
@@ -126,6 +134,7 @@ class PreferenceViewModelTest {
         gP = 1.0,
         gT = 1.0,
         personalizationOn = false,
+        hasPreferenceTest = hasPrefTest,
     )
 
     private fun rig(b: PreferenceBaseline? = baseline(), seed: Int = SEED): Rig {
@@ -626,5 +635,135 @@ class PreferenceViewModelTest {
         assertThat(r.bypass.openCount).isEqualTo(0)
         assertThat(r.backend.player.released).isTrue()
         assertThat(r.ui.audio).isEqualTo(AudioStatus.IDLE)
+    }
+
+    // ---- re-entry on the fine-tune ---------------------------------------------------------------------------------
+
+    private fun TestScope.reentry(): Rig {
+        val r = rig(baseline(hasPrefTest = true).let { b ->
+            PreferenceBaseline(b.profileId, b.hlLeft, b.hlRight, b.hasTest, 0.6, 2.5, -1.5, 3.0, false, true)
+        })
+        settle()
+        return r
+    }
+
+    @Test
+    fun reentry_opensOnFineTuneWithSavedValuesAndTheSameCurveAsAfterTheRounds() = runTest(dispatcher) {
+        val r = reentry()
+        val b = checkNotNull(r.data.baseline)
+        assertThat(r.ui.phase).isEqualTo(PrefPhase.FINE_TUNE)
+        assertThat(r.ui.strength).isEqualTo(0.6f)
+        assertThat(listOf(r.ui.gB, r.ui.gP, r.ui.gT)).containsExactly(2.5f, -1.5f, 3.0f).inOrder()
+        assertThat(r.ui.personalized).isTrue()
+        assertThat(r.ui.hasHearingTest).isTrue()
+        val expected = PreferencePlanner.curve(b, 0.6f.toDouble(), 2.5, -1.5, 3.0)
+        assertThat(r.ui.gLeft!!.toList()).isEqualTo(expected.gLeft.toList())
+        assertThat(r.ui.gRight!!.toList()).isEqualTo(expected.gRight.toList())
+        assertThat(r.backend.players).isEmpty() // P0: nothing before STARTED
+        assertThat(r.bypass.openCount).isEqualTo(0)
+    }
+
+    @Test
+    fun noPreferenceTest_stillOpensOnTheIntro() = runTest(dispatcher) {
+        val r = rig()
+        settle()
+        assertThat(r.ui.phase).isEqualTo(PrefPhase.INTRO)
+    }
+
+    @Test
+    fun reentry_audioStartsOnlyWhenStarted_andIsReleasedOnStop() = runTest(dispatcher) {
+        val r = reentry()
+        r.vm.startAudio()
+        advanceTimeBy(500)
+        settle()
+        assertThat(r.backend.bypassHeldAtCreate).isTrue()
+        assertThat(r.bypass.openCount).isEqualTo(1)
+        assertThat(r.ui.audio).isEqualTo(AudioStatus.READY)
+        r.vm.stopAudio()
+        assertThat(r.bypass.openCount).isEqualTo(0)
+        assertThat(r.backend.player.released).isTrue()
+    }
+
+    @Test
+    fun reentry_startedBeforeLoadFinishesStillPreparesOnceLoaded() = runTest(dispatcher) {
+        val bypass = FakeBypassController()
+        val backend = FakeBackend(bypass)
+        val data = FakeData(baseline(hasPrefTest = true), SEED)
+        val vm = PreferenceViewModel(SavedStateHandle(mapOf("profileId" to 3L)), data, backend, bypass)
+        vm.startAudio() // before load() ran
+        settle()
+        advanceTimeBy(500)
+        settle()
+        assertThat(vm.ui.value.phase).isEqualTo(PrefPhase.FINE_TUNE)
+        assertThat(vm.ui.value.audio).isEqualTo(AudioStatus.READY)
+        assertThat(bypass.openCount).isEqualTo(1)
+    }
+
+    @Test
+    fun reentry_failedCreateReleasesTheToken() = runTest(dispatcher) {
+        val r = reentry()
+        r.backend.failCreate = true
+        r.vm.startAudio()
+        advanceTimeBy(500)
+        settle()
+        assertThat(r.ui.audio).isEqualTo(AudioStatus.ERROR)
+        assertThat(r.bypass.openCount).isEqualTo(0)
+    }
+
+    @Test
+    fun loadFailure_isUnavailableAndHoldsNoToken() = runTest(dispatcher) {
+        val bypass = FakeBypassController()
+        val data = FakeData(baseline(hasPrefTest = true), SEED).also { it.failLoad = true }
+        val vm = PreferenceViewModel(SavedStateHandle(mapOf("profileId" to 3L)), data, FakeBackend(bypass), bypass)
+        vm.startAudio()
+        settle()
+        assertThat(vm.ui.value.phase).isEqualTo(PrefPhase.UNAVAILABLE)
+        assertThat(bypass.openCount).isEqualTo(0)
+    }
+
+    @Test
+    fun redo_fromTheFineTuneGoesToRoundOneWithAFreshBisection() = runTest(dispatcher) {
+        val r = reentry()
+        r.vm.startAudio()
+        advanceTimeBy(500)
+        settle()
+        r.vm.begin()
+        settle()
+        assertThat(r.ui.phase).isEqualTo(PrefPhase.ROUND)
+        assertThat(r.ui.roundNumber).isEqualTo(1)
+        assertThat(r.ui.axis).isEqualTo(PreferenceBisection(Random(SEED)).currentRound!!.axis)
+        assertThat(r.backend.players.first().released).isTrue() // old audio released, a new one prepared
+        assertThat(r.bypass.openCount).isEqualTo(1)
+        // The wizard runs as usual from the centre 0 (not from the saved gains).
+        play(r, "+++++++++")
+        assertThat(r.ui.phase).isEqualTo(PrefPhase.RESULT)
+        assertThat(r.ui.gB).isEqualTo(10.5f)
+    }
+
+    @Test
+    fun saveFromReentry_writesOnlyTheSettings_neverATest() = runTest(dispatcher) {
+        val r = reentry()
+        r.vm.setBass(4f)
+        r.vm.save()
+        settle()
+        assertThat(r.ui.saved).isTrue()
+        assertThat(r.data.saves).isEmpty()
+        val (id, st) = r.data.settingsSaves.single()
+        assertThat(id).isEqualTo(3L)
+        assertThat(st).isEqualTo(ProfileSettings(0.6f, 4f, -1.5f, 3f, personalizationOn = false))
+    }
+
+    @Test
+    fun saveAfterARedo_usesTheFullSave() = runTest(dispatcher) {
+        val r = reentry()
+        r.vm.startAudio()
+        r.vm.begin()
+        settle()
+        play(r, "+++++++++")
+        r.vm.openFineTune()
+        r.vm.save()
+        settle()
+        assertThat(r.data.settingsSaves).isEmpty()
+        assertThat(r.data.saves).hasSize(1)
     }
 }

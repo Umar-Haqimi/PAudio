@@ -67,6 +67,8 @@ class PreferenceBaseline(
     val gP: Double,
     val gT: Double,
     val personalizationOn: Boolean,
+    /** True when the profile already has a saved preference test: re-entry then opens on the fine-tune screen. */
+    val hasPreferenceTest: Boolean = false,
 )
 
 interface PreferenceData {
@@ -74,6 +76,12 @@ interface PreferenceData {
     suspend fun load(profileId: Long?): PreferenceBaseline?
 
     suspend fun save(profileId: Long, startedAt: Long, test: Triple<Float, Float, Float>, roundsJson: String, settings: ProfileSettings)
+
+    /**
+     * Fine-tune-only save (no A/B rounds this session): writes the profile's strength / gB / gP / gT and never a
+     * `PreferenceTest` row.
+     */
+    suspend fun saveSettings(profileId: Long, settings: ProfileSettings)
 
     fun nowMs(): Long
 
@@ -117,6 +125,7 @@ internal class AndroidPreferenceData @Inject constructor(
             gP = profile.gP.toDouble(),
             gT = profile.gT.toDouble(),
             personalizationOn = profile.personalizationOn,
+            hasPreferenceTest = prefTests.latest(id) != null,
         )
     }
 
@@ -156,6 +165,16 @@ internal class AndroidPreferenceData @Inject constructor(
                         roundsJson = roundsJson,
                     ),
                 )
+                profiles.updateSettings(profileId, settings.copy(personalizationOn = current))
+            }
+        }
+    }
+
+    override suspend fun saveSettings(profileId: Long, settings: ProfileSettings) {
+        // Same rules as save(): finishes even if the screen is left, personalizationOn re-read inside the transaction.
+        withContext(NonCancellable) {
+            tx.withTransaction {
+                val current = profiles.get(profileId)?.profile?.personalizationOn ?: settings.personalizationOn
                 profiles.updateSettings(profileId, settings.copy(personalizationOn = current))
             }
         }

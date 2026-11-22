@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -89,6 +90,7 @@ internal const val LISTEN_B_TAG = "pref_listen_b"
 internal const val ANOTHER_SONG_TAG = "pref_another_song"
 internal const val START_TAG = "pref_start"
 internal const val FINE_TUNE_TAG = "pref_fine_tune"
+internal const val REDO_TAG = "pref_redo"
 internal const val SAVE_TAG = "pref_save"
 internal const val SLIDER_STRENGTH_TAG = "pref_slider_strength"
 internal const val SLIDER_BASS_TAG = "pref_slider_bass"
@@ -108,6 +110,7 @@ internal class PreferenceActions(
     val onAnotherSong: () -> Unit = {},
     val onRetryAudio: () -> Unit = {},
     val onFineTune: () -> Unit = {},
+    val onRedo: () -> Unit = {},
     val onSave: () -> Unit = {},
     val onStrength: (Float) -> Unit = {},
     val onBass: (Float) -> Unit = {},
@@ -138,6 +141,7 @@ internal fun PreferenceScreen(onBack: () -> Unit, viewModel: PreferenceViewModel
             onAnotherSong = viewModel::tryAnotherSong,
             onRetryAudio = viewModel::retryAudio,
             onFineTune = viewModel::openFineTune,
+            onRedo = viewModel::begin,
             onSave = viewModel::save,
             onStrength = viewModel::setStrength,
             onBass = viewModel::setBass,
@@ -494,10 +498,15 @@ private fun FineTuneCard(ui: PreferenceUiState, actions: PreferenceActions) {
         )
         GainWords(ui, locale)
         SaveRow(ui, actions)
+        TextButton(
+            onClick = actions.onRedo,
+            enabled = !ui.saving && !ui.saved,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(REDO_TAG),
+        ) { Text(stringResource(R.string.preference_redo)) }
     }
 }
 
-private fun ClosedFloatingPointRange<Double>.toFloatRange(): ClosedFloatingPointRange<Float> = start.toFloat()..endInclusive.toFloat()
+internal fun ClosedFloatingPointRange<Double>.toFloatRange(): ClosedFloatingPointRange<Float> = start.toFloat()..endInclusive.toFloat()
 
 @Composable
 private fun ClipPicker(selected: DemoClip, onClip: (DemoClip) -> Unit) {
@@ -509,7 +518,7 @@ private fun ClipPicker(selected: DemoClip, onClip: (DemoClip) -> Unit) {
                     selected = clip == selected,
                     onClick = { onClip(clip) },
                     label = { Text(stringResource(clipNameRes(clip))) },
-                    modifier = Modifier.heightIn(min = 48.dp),
+                    modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
                 )
             }
         }
