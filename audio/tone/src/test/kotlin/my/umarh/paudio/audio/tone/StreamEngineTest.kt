@@ -5,6 +5,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import my.umarh.paudio.core.model.StereoBuffer
@@ -124,6 +125,28 @@ class StreamEngineTest {
         sampler.await()
         assertThat(trueAfterPulseReturned).isEqualTo(0)
         assertThat(falseInGap).isGreaterThan(0)
+        e.close()
+    }
+
+    /**
+     * Pins the order in `poll`: `playing = false` is published BEFORE the finished caller is woken. The caller runs
+     * Unconfined, so its continuation executes inline on the writer thread the moment its waiter completes: with the
+     * order reversed it reads `playing == true` every time. The sink's head lags the writes (lead time).
+     */
+    @Test
+    fun aCallerWokenByPlayNeverReadsAStalePlayingFlag() = runBlocking {
+        val e = StreamEngine(FakeSink(rate, lagFrames = 960), rate)
+        e.start()
+        val readings = java.util.concurrent.CopyOnWriteArrayList<Boolean>()
+        val job = kotlinx.coroutines.CoroutineScope(Dispatchers.Unconfined).launch {
+            repeat(5) {
+                e.play(tone(960))
+                readings += e.playing.value // inline on the writer thread, right after the waiter completed
+            }
+        }
+        withTimeout(10_000) { job.join() }
+        assertThat(readings).hasSize(5)
+        assertThat(readings).doesNotContain(true)
         e.close()
     }
 

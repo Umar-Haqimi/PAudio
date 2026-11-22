@@ -2,6 +2,8 @@ package my.umarh.paudio.feature.hearingtest
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -105,6 +107,25 @@ class ScriptedTone(
 
     @Volatile override var onPlay: (StereoBuffer) -> Unit = {}
 
+    /**
+     * A lagging flag: with a [tailScope], `playing` stays true for [tailMs] after a stimulus ended or was stopped
+     * (like a sink whose flag trails the audio). Pins the session's wait-for-silence guard before signals.
+     */
+    @Volatile var tailScope: kotlinx.coroutines.CoroutineScope? = null
+    @Volatile var tailMs: Long = 0
+
+    private fun dropPlaying() {
+        val sc = tailScope
+        if (sc == null || tailMs <= 0) {
+            _playing.value = false
+        } else {
+            sc.launch {
+                delay(tailMs)
+                _playing.value = false
+            }
+        }
+    }
+
     private val _playing = MutableStateFlow(false)
     override val playing: StateFlow<Boolean> = _playing
     @Volatile private var stopSignal: CompletableDeferred<Unit>? = null
@@ -138,10 +159,12 @@ class ScriptedTone(
                 val ms = stimulus.frames * 1000L / stimulus.sampleRate
                 withTimeoutOrNull(ms) { stop.await() }
             } else {
-                kotlinx.coroutines.yield() // an instant double must still be a cancellation point
+                // "Instant" doubles still take a nominal virtual time: answers are armed only from onset + 200 ms,
+                // and a stimulus loop must not spin without virtual time passing.
+                withTimeoutOrNull(NON_TIMED_PLAY_MS) { stop.await() }
             }
         } finally {
-            _playing.value = false
+            dropPlaying()
             if (stopSignal === stop) stopSignal = null
         }
     }
@@ -152,9 +175,13 @@ class ScriptedTone(
         if (timed) delay(ms.toLong()) else kotlinx.coroutines.yield()
     }
 
+    /** Calls of [stopCurrent] (pins the unconditional ramp-down after a Quick answer). */
+    val stopCalls = AtomicInteger(0)
+
     override suspend fun stopCurrent() {
+        stopCalls.incrementAndGet()
         stopSignal?.complete(Unit)
-        _playing.value = false
+        dropPlaying()
     }
 
     override fun close() {
@@ -183,12 +210,20 @@ class FakeFocus : FocusSource {
 
     override fun reacquire(): Boolean = request()
 
+    /** Runs inside [abandon] (i.e. inside the session's cleanup, on the session thread). */
+    @Volatile var onAbandon: () -> Unit = {}
+
+    /** Runs when the session's focus monitor stops collecting (it is cancelled while the session unwinds). */
+    @Volatile var onMonitorStopped: () -> Unit = {}
+
     override fun abandon() {
         abandoned.incrementAndGet()
         held = false
+        onAbandon()
     }
 
-    override val events: kotlinx.coroutines.flow.Flow<FocusEvent> = flow
+    override val events: kotlinx.coroutines.flow.Flow<FocusEvent> =
+        flow.onCompletion { onMonitorStopped() }
 
     fun lose(e: FocusEvent = FocusEvent.LOST_TRANSIENT) {
         flow.tryEmit(e)
@@ -211,6 +246,9 @@ class FakeStore : TestStore {
     @Volatile var listener: Long? = 1L
     val attempts = AtomicInteger(0)
 
+    /** When set, save() waits for it inside NonCancellable (like the real store's transaction). */
+    @Volatile var saveGate: CompletableDeferred<Unit>? = null
+
     override suspend fun check(device: OutputDevice?, requestedProfileId: Long?): TargetCheck =
         if (device == null || !device.isProcessable) TargetCheck.NotProcessable else check
 
@@ -218,6 +256,7 @@ class FakeStore : TestStore {
 
     override suspend fun save(request: SaveRequest): Long {
         attempts.incrementAndGet()
+        saveGate?.let { g -> kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { g.await() } }
         if (failSave) error("disk full")
         if (profileMissing && request.requestedProfileId != null) throw ProfileMissingException()
         saved += request
@@ -265,3 +304,19 @@ fun quickTrialOf(info: BufferInfo, freqHz: Int): Trial =
 
 /** Convenience for tests that need a processable output other than the default. */
 val OTHER_BUDS = OutputDevice(my.umarh.paudio.core.model.OutputDeviceType.BLUETOOTH_A2DP, "Other Buds", "12:34")
+
+/** Virtual duration of one stimulus on a non-timed [ScriptedTone]. */
+const val NON_TIMED_PLAY_MS = 50L
+
+/** Advances virtual time in small steps until [done] (bounded): for states that wait forever, unlike advanceUntilIdle. */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+fun kotlinx.coroutines.test.TestScope.advanceUntil(limitMs: Long = 600_000, stepMs: Long = 50, done: () -> Boolean) {
+    var t = 0L
+    testScheduler.runCurrent()
+    while (!done() && t < limitMs) {
+        testScheduler.advanceTimeBy(stepMs)
+        testScheduler.runCurrent()
+        t += stepMs
+    }
+    check(done()) { "condition not reached within $limitMs ms" }
+}

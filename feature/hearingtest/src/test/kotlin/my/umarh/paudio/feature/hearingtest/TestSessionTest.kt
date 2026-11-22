@@ -435,9 +435,9 @@ class TestSessionTest {
             val st = rig.session.state.value
             val info = b.info()
             if (st is SessionState.Testing && st.trialOpen && !info.silent && interrupted == null) {
-                val key = "${info.ear}@${st.frequencyHz}"
+                val key = "${info.ear}@${rig.session.quickTrialFreq}"
                 if ((counts[key] ?: 0) >= 2) {
-                    interrupted = key to st.frequencyHz
+                    interrupted = key to rig.session.quickTrialFreq
                     interruptedAfter = rig.tone.played.size
                     pending = key to (counts[key] ?: 0)
                     rig.session.onBackgrounded() // interrupts this very trial
@@ -447,14 +447,14 @@ class TestSessionTest {
                 }
             } else {
                 if (st is SessionState.Testing && st.trialOpen && !info.silent) {
-                    val key = "${info.ear}@${st.frequencyHz}"
+                    val key = "${info.ear}@${rig.session.quickTrialFreq}"
                     counts[key] = (counts[key] ?: 0) + 1
                 }
                 inner(b)
             }
         }
         rig.session.start()
-        runCurrent()
+        advanceUntil { rig.session.state.value is SessionState.Paused }
         assertThat(rig.paused().reason).isEqualTo(PauseReason.BACKGROUNDED)
         rig.session.onForegrounded()
         rig.session.resume()
@@ -494,7 +494,7 @@ class TestSessionTest {
         val rig = quickRig(early = 8)
         Brain(rig, normalListener(), responder = AlwaysYesListener).install()
         rig.session.start()
-        runCurrent()
+        advanceUntil { rig.session.state.value is SessionState.Paused }
         assertThat(rig.paused().reason).isEqualTo(PauseReason.UNRELIABLE)
         assertThat(rig.paused().testFinished).isFalse()
         rig.session.keepGoing()
@@ -510,7 +510,7 @@ class TestSessionTest {
         val brain = Brain(rig, normalListener(), responder = AlwaysYesListener)
         brain.install()
         rig.session.start()
-        runCurrent()
+        advanceUntil { rig.session.state.value is SessionState.Paused }
         assertThat(rig.paused().reason).isEqualTo(PauseReason.UNRELIABLE)
         val playedBefore = rig.tone.played.size
         // from now on the person answers honestly
@@ -531,7 +531,7 @@ class TestSessionTest {
         val rig = quickRig(early = 100_000)
         Brain(rig, normalListener(), responder = AlwaysYesListener).install()
         rig.session.start()
-        runCurrent()
+        advanceUntil { rig.session.state.value is SessionState.Paused }
         val p = rig.paused()
         assertThat(p.reason).isEqualTo(PauseReason.UNRELIABLE)
         assertThat(p.testFinished).isTrue()

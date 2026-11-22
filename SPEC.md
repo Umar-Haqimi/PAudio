@@ -240,7 +240,7 @@ Record every final version and any library swap in `docs/DECISIONS.md` and `grad
 **Style:** Material 3 **Expressive** 🎧. Springy `MaterialTheme.motionScheme` motion, MaterialShapes morphs, big display type in Roboto Flex, edge-to-edge (required at targetSdk ≥ 35), full light/dark support, profile-seeded dynamic color (F25). Shape and color are never the only carrier of meaning: the audiogram uses ○/✕ markers plus color, and states carry text.
 
 Signature elements (implement in `:designsystem`):
-- **Morphing hear button:** a large `Cookie9Sided` button that softly pulses while a stimulus plays and springs into `Sunny` on press (Morph progress driven by a spring).
+- **Morphing hear button:** a large `Cookie9Sided` button that softly pulses while a stimulus plays during calibration and the Thorough test (in the Quick test it stays visually steady: no timing cue) and springs into `Sunny` on press (Morph progress driven by a spring).
 - **Frequency-wave progress:** wavy linear progress where `wavelength = lerp(48.dp, 10.dp, log2(f/1000)/log2(14))` and amplitude eases in while a stimulus plays.
 - **Hearing butterfly:** the vertical axis is frequency (1 kHz at the bottom, 14 kHz at the top, log scale). The left wing is the left ear and the right wing the right ear, mirrored around the center. Wing half-width at f = `map(clamp(60 − HL_est, 0, 70))`. Closed Catmull-Rom paths filled with primary/tertiary containers at 70% alpha, drawn in with a 900 ms path-trim animation.
 - **Profile seed color:** hue = log-mapped frequency of the largest HL_est (1 kHz → 200°, 14 kHz → 340°, wrapped); chroma rises with asymmetry. Deterministic, stored on the profile.

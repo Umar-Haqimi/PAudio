@@ -122,6 +122,7 @@
     <string name="hearingtest_aborted_save_failed">We couldn\'t save your results. Please try again.</string>
     <string name="hearingtest_aborted_no_headphones">Connect your earphones. PAudio doesn\'t test through the phone\'s speaker.</string>
     <string name="hearingtest_aborted_user">The test was stopped.</string>
+    <string name="hearingtest_aborted_busy">The previous test is still closing. Try again in a moment.</string>
     <string name="hearingtest_aborted_try_again">Try again</string>
     <string name="hearingtest_aborted_close">Close</string>
 
@@ -132,6 +133,10 @@
     <string name="hearingtest_save_failed_retry">Try saving again</string>
     <string name="hearingtest_save_failed_use_active">Save to the current profile</string>
     <string name="hearingtest_save_failed_discard">Leave without saving</string>
+    <string name="hearingtest_leave_unsaved_title">Leave without saving?</string>
+    <string name="hearingtest_leave_unsaved_text">Your results from this test will be lost.</string>
+    <string name="hearingtest_leave_unsaved_leave">Leave</string>
+    <string name="hearingtest_leave_unsaved_stay">Stay</string>
 
     <!-- Exit confirmation -->
     <string name="hearingtest_exit_title">Stop the test?</string>
