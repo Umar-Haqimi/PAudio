@@ -164,6 +164,12 @@ class HearingTestViewModel internal constructor(
         .flatMapLatest { s -> (s as? Stage.Running)?.session?.pulseAudible ?: flowOf(false) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
+    /**
+     * Live read of the running session's stimulus flag, independent of the main thread (the [stimulusPlaying]
+     * StateFlow is collected on main and lags when it stalls). Used right before a haptic / announcement fires.
+     */
+    fun isStimulusAudibleNow(): Boolean = session?.isPulseAudibleNow ?: false
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val uiState: StateFlow<HearingTestUiState> = stage
         .flatMapLatest { s ->

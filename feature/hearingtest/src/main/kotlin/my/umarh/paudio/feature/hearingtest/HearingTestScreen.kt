@@ -29,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -44,12 +45,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -128,6 +130,7 @@ internal object Tags {
     const val SAVE_RETRY = "ht_save_retry"
     const val SAVE_ACTIVE = "ht_save_active"
     const val EXIT_DIALOG = "ht_exit_dialog"
+    const val LEAVE_UNSAVED_DIALOG = "ht_leave_unsaved_dialog"
 }
 
 @Composable
@@ -138,13 +141,7 @@ internal fun HearingTestScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val playing by viewModel.stimulusPlaying.collectAsStateWithLifecycle()
-    // Backgrounding pauses the test (F8); ON_STOP also covers screen-off. A configuration change (rotation) also
-    // stops the activity, but the ViewModel and its session survive it: that must not pause the test.
-    val activity = LocalActivity.current
-    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
-        if (activity?.isChangingConfigurations != true) viewModel.onStopped()
-    }
-    LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onStarted() }
+    PauseWhenBackgrounded(onStopped = viewModel::onStopped, onStarted = viewModel::onStarted)
     val owner = LocalLifecycleOwner.current
     LaunchedEffect(viewModel, owner) {
         owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -162,7 +159,35 @@ internal fun HearingTestScreen(
         signals = viewModel.signals,
         actions = viewModel,
         onBack = onBack,
+        // Read live at fire time from the session (not the recomposed copy, which lags if the main thread stalls).
+        isStimulusAudibleNow = viewModel::isStimulusAudibleNow,
     )
+}
+
+/**
+ * Backgrounding pauses the test (F8); ON_STOP also covers screen-off. A configuration change (rotation) also stops
+ * the activity, but the ViewModel and its session survive it: that must not pause the test. If this composable first
+ * runs while its lifecycle is already below STARTED (the recreated activity was stopped before it composed, e.g. the
+ * screen went off right after a rotation), that missed ON_STOP is delivered at once.
+ */
+@Composable
+internal fun PauseWhenBackgrounded(onStopped: () -> Unit, onStarted: () -> Unit) {
+    val activity = LocalActivity.current
+    val owner = LocalLifecycleOwner.current
+    val stop by rememberUpdatedState(onStopped)
+    val start by rememberUpdatedState(onStarted)
+    DisposableEffect(owner, activity) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> if (activity?.isChangingConfigurations != true) stop()
+                Lifecycle.Event.ON_START -> start()
+                else -> Unit
+            }
+        }
+        if (!owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) stop()
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
+    }
 }
 
 @Composable
@@ -173,14 +198,19 @@ internal fun HearingTestContent(
     signals: Flow<SessionSignal>,
     actions: HearingTestActions,
     onBack: () -> Unit,
+    /** Live "is a stimulus audible now" read at haptic/announcement time; defaults to [stimulusPlaying]. */
+    isStimulusAudibleNow: (() -> Boolean)? = null,
 ) {
     SuppressSoundEffects()
     var showExit by remember { mutableStateOf(false) }
+    var showLeaveUnsaved by remember { mutableStateOf(false) }
     val session = (state as? HearingTestUiState.Active)?.session
     val terminal = session?.isAfterCleanup == true
 
     val handleBack: () -> Unit = {
         when {
+            // The finished test is only in memory: leaving discards it, so ask first.
+            session is SessionState.SaveFailed -> showLeaveUnsaved = true
             state is HearingTestUiState.ModeChoice || terminal -> onBack()
             state is HearingTestUiState.Prep -> actions.backToModeChoice()
             else -> showExit = true
@@ -197,23 +227,29 @@ internal fun HearingTestContent(
     val notHeardText = stringResource(R.string.hearingtest_ack_not_heard)
     val confirmedText = stringResource(R.string.hearingtest_ack_confirmed)
     val playingNow by rememberUpdatedState(stimulusPlaying)
+    val liveAudible by rememberUpdatedState(isStimulusAudibleNow)
     LaunchedEffect(signals) {
         signals.collect { s ->
             snapshotFlow { playingNow }.first { !it }
-            when (s) {
+            // The recomposed flag can lag (a stalled main thread): re-check the live source right before firing.
+            while (liveAudible?.invoke() == true) delay(LIVE_SILENCE_POLL_MS)
+            val text = when (s) {
                 is SessionSignal.Responded -> {
                     haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    ack = if (s.heard) heardText else notHeardText
+                    if (s.heard) heardText else notHeardText
                 }
                 SessionSignal.RunConfirmed -> {
                     haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                    ack = confirmedText
+                    confirmedText
                 }
             }
+            // Blank for one frame first, so the same text twice is still announced. Nothing here is tied to a
+            // trial onset (the old "clear when the next trial opens" was a trial-locked semantics change).
+            ack = ""
+            withFrameNanos { }
+            ack = text
         }
     }
-    val trialOpen = (session as? SessionState.Testing)?.trialOpen == true
-    LaunchedEffect(trialOpen) { if (trialOpen) ack = "" } // cleared at the next trial so nothing is re-announced
 
     TestPage(
         title = stringResource(R.string.feature_hearingtest_title),
@@ -232,6 +268,26 @@ internal fun HearingTestContent(
                     liveRegion = LiveRegionMode.Polite
                     contentDescription = ack
                 },
+        )
+    }
+
+    if (showLeaveUnsaved) {
+        AlertDialog(
+            modifier = Modifier.testTag(Tags.LEAVE_UNSAVED_DIALOG),
+            onDismissRequest = { showLeaveUnsaved = false },
+            title = { Text(stringResource(R.string.hearingtest_leave_unsaved_title)) },
+            text = { Text(stringResource(R.string.hearingtest_leave_unsaved_text)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLeaveUnsaved = false
+                        onBack()
+                    },
+                ) { Text(stringResource(R.string.hearingtest_leave_unsaved_leave)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLeaveUnsaved = false }) { Text(stringResource(R.string.hearingtest_leave_unsaved_stay)) }
+            },
         )
     }
 
@@ -256,6 +312,8 @@ internal fun HearingTestContent(
         )
     }
 }
+
+private const val LIVE_SILENCE_POLL_MS = 16L
 
 /** UI click sounds would contaminate the test (trap #20): off for the whole flow while composed. */
 @Composable

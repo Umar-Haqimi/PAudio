@@ -47,7 +47,7 @@ internal fun SessionScreen(
         is SessionState.ChannelCheck -> ChannelCheckScreen(session, actions)
         is SessionState.Calibrating -> CalibrationScreen(session, stimulusPlaying, actions)
         is SessionState.Testing -> when (session.mode) {
-            TestMode.QUICK -> QuickScreen(session, stimulusPlaying, actions)
+            TestMode.QUICK -> QuickScreen(session, actions)
             TestMode.THOROUGH -> ThoroughScreen(session, stimulusPlaying, actions)
         }
         is SessionState.Paused -> PausedScreen(session, actions)
@@ -183,17 +183,22 @@ internal fun CalibrationScreen(state: SessionState.Calibrating, stimulusPlaying:
 
 // ---- Quick (F5) --------------------------------------------------------------------------------------------------
 
+/**
+ * Quick shows NO timing cue (DECISIONS §27.1): the hear button and the wave stay visually steady (no pulse, no
+ * enabled toggling, nothing locked to a trial or a stimulus), because a known listening window makes detection easier
+ * and would let a user answer from the screen. The screen therefore takes no stimulus flag at all.
+ */
 @Composable
-internal fun QuickScreen(state: SessionState.Testing, stimulusPlaying: Boolean, actions: HearingTestActions) {
+internal fun QuickScreen(state: SessionState.Testing, actions: HearingTestActions) {
     Heading(stringResource(R.string.hearingtest_quick_heading))
     Text(stringResource(R.string.hearingtest_quick_instruction), style = MaterialTheme.typography.bodyLarge)
-    ProgressBlock(state, stimulusPlaying)
+    ProgressBlock(state, stimulusPlaying = false)
     // Always enabled: toggling `enabled` at stimulus onset would make TalkBack announce the change during the
-    // stimulus (trap #20). The session ignores taps between trials.
+    // stimulus (trap #20) and reveal the listening window. The session ignores taps between trials.
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         MorphingHearButton(
             onPress = { actions.respond(true) },
-            stimulusPlaying = stimulusPlaying,
+            stimulusPlaying = false,
             enabled = true,
             label = stringResource(R.string.hearingtest_quick_heard),
             modifier = Modifier.testTag(Tags.HEAR),
@@ -393,6 +398,7 @@ internal fun AbortedScreen(state: SessionState.Aborted, actions: HearingTestActi
             AbortReason.SAVE_FAILED -> R.string.hearingtest_aborted_save_failed
             AbortReason.NO_HEADPHONES -> R.string.hearingtest_aborted_no_headphones
             AbortReason.USER -> R.string.hearingtest_aborted_user
+            AbortReason.PREVIOUS_SESSION_BUSY -> R.string.hearingtest_aborted_busy
         }
         Text(
             stringResource(message),

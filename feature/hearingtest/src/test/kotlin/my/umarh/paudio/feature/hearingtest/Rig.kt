@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
@@ -98,6 +99,9 @@ class Brain(
     /** UI tests answer some Quick trials by clicking; set false to leave trials open. */
     @Volatile var autoQuick = true
 
+    /** Thorough runs are confirmed automatically; false leaves them to the test. */
+    @Volatile var autoThorough = true
+
     /** The first N Quick trials are left open (a UI test answers them by clicking). */
     @Volatile var leaveOpen = 0
     private val opened = java.util.concurrent.atomic.AtomicInteger(0)
@@ -115,7 +119,7 @@ class Brain(
         val st = sess().state.value
         val info = b.info()
         when {
-            // Answers count only once the step's first beep has played: a person answers the repeat.
+            // Answers count only from 300 ms after the step's first beep: a person answers the repeat.
             st is SessionState.ChannelCheck && sess().channelAnswerArmed -> {
                 val correct = if (info.ear == Ear.LEFT) ChannelAnswer.LEFT else ChannelAnswer.RIGHT
                 val wrong = if (correct == ChannelAnswer.LEFT) ChannelAnswer.RIGHT else ChannelAnswer.LEFT
@@ -124,16 +128,18 @@ class Brain(
             st is SessionState.Calibrating && st.phase == CalibrationPhase.RAMP ->
                 if (!info.silent && info.levelDbfs >= tapAt(rig.volume.index()) - 0.01) sess().calibrationTap()
             st is SessionState.Testing && st.mode == TestMode.QUICK && st.trialOpen && autoQuick && opened.getAndIncrement() >= leaveOpen -> {
-                val heard = responder.respond(quickTrialOf(info, st.frequencyHz))
+                val session = sess()
+                // The screen no longer shows the trial's frequency before the answer: read it from the session.
+                val heard = responder.respond(quickTrialOf(info, session.quickTrialFreq))
                 answeredQuick.incrementAndGet()
                 val delayMs = if (heard) heardMs else notHeardMs
-                if (delayMs == 0L || scope == null) {
-                    sess().respond(heard)
-                } else {
-                    scope.launch {
-                        delay(delayMs)
-                        sess().respond(heard)
-                    }
+                val trial = session.quickTrialId
+                // A person answers no earlier than the minimum reaction time; answer exactly this trial (a trial that
+                // was interrupted meanwhile is never answered late into the next one).
+                (scope ?: rig.scope).launch {
+                    if (delayMs > 0) delay(delayMs)
+                    session.armedTrial.first { it >= trial }
+                    if (session.armedTrial.value == trial) session.respond(heard)
                 }
             }
         }
@@ -143,7 +149,7 @@ class Brain(
         val sc = checkNotNull(scope) { "Thorough needs a scope for the run delay" }
         sc.launch {
             sess().state.collect { st ->
-                if (st is SessionState.Testing && st.dial != null && !runBusy) {
+                if (st is SessionState.Testing && st.dial != null && !runBusy && autoThorough) {
                     runBusy = true
                     launch { handleRun(st) }
                 } else if (st is SessionState.Testing && st.dial == null) {
@@ -161,6 +167,7 @@ class Brain(
         val level0 = info.levelDbfs
         val ear = info.ear ?: Ear.LEFT
         if (thoroughRunMs > 0) delay(thoroughRunMs)
+        while (!sess().dialArmed && sess().isActive) delay(10) // the minimum reaction time after the first pulse
         val target = listener.thoroughConfirmLevel(ear, st.frequencyHz)
         val desired = dial.position + (target - level0).roundToInt()
         sess().dialTo(desired)

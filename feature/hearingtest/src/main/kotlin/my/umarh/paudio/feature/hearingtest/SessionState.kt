@@ -37,6 +37,9 @@ enum class AbortReason {
 
     /** The user left the test (back / exit dialog) or the screen was torn down. */
     USER,
+
+    /** The previous session's cleanup did not finish within [SessionConfig.gateTimeoutMs]; nothing was acquired. */
+    PREVIOUS_SESSION_BUSY,
 }
 
 enum class ChannelCheckProblem { NONE, WRONG_EAR, TOO_QUIET }
@@ -89,9 +92,15 @@ sealed interface SessionState {
         val progress: Float,
         val completedPoints: Int,
         val totalPoints: Int,
-        /** Frequency of the current/last presented stimulus (drives the wave progress; 1 kHz before the first). */
+        /**
+         * Drives the wave progress. Thorough: the current run's frequency. Quick: the last ANSWERED trial's frequency
+         * (1 kHz before the first), so nothing visible changes at a stimulus onset (DECISIONS §27.1).
+         */
         val frequencyHz: Int,
-        /** Quick: the answer buttons are live (a stimulus is being presented / awaiting the answer). */
+        /**
+         * Quick: a trial is open (presented, awaiting the answer). Not shown anywhere in Quick (no trial-locked visual
+         * or semantics change, DECISIONS §27.1); the buttons are always enabled.
+         */
         val trialOpen: Boolean,
         val dial: DialUi?,
         /** Calibration landed outside the ideal window ([-68, -50]) but inside [-75, -35]. */

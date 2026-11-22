@@ -164,7 +164,7 @@ class ReviewFixesTest {
         val second = quickRig(gate = gate, seed = 4)
         Brain(second, normalListener(), scope = brainScope()).install()
         second.session.start()
-        advanceTimeBy(10_000)
+        advanceTimeBy(4_000) // below the 5 s gate timeout
         runCurrent()
         assertThat(second.session.state.value).isEqualTo(SessionState.Starting)
         assertThat(second.trace.acquired.get()).isEqualTo(0)
@@ -394,7 +394,7 @@ class ReviewFixesTest {
         val rig = Rig.virtual(testScheduler, TestMode.QUICK, timed = false, seed = 3, pauseTimeoutMs = 60_000, earlyMinCatches = 100_000)
         Brain(rig, normalListener(), responder = AlwaysYesListener).install()
         rig.session.start()
-        runCurrent()
+        advanceUntil { rig.session.state.value is SessionState.Paused }
         val p = rig.session.state.value as SessionState.Paused
         assertThat(p.reason).isEqualTo(PauseReason.UNRELIABLE)
         assertThat(p.testFinished).isTrue()
@@ -438,9 +438,9 @@ class ReviewFixesTest {
         brain.autoQuick = false
         brain.install()
         rig.session.start()
-        // step until the first Quick stimulus is being played (and unanswered)
         var guard = 0
-        while (!((rig.session.state.value as? SessionState.Testing)?.trialOpen == true && rig.tone.playing.value) && guard++ < 10_000) {
+        // step until the first Quick stimulus is playing and answers are armed (onset + 200 ms; still inside the 1075 ms stimulus)
+        while (!((rig.session.state.value as? SessionState.Testing)?.trialOpen == true && rig.session.responseArmed && rig.tone.playing.value) && guard++ < 10_000) {
             advanceTimeBy(10)
             runCurrent()
         }

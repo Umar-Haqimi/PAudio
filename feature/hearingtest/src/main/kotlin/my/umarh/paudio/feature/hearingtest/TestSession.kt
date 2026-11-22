@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -76,11 +77,14 @@ class SessionConfig(
     val random: Random = Random.Default,
     /** Longest continuous pause before the session gives the engine back (see DECISIONS §23). */
     val pauseTimeoutMs: Long = DEFAULT_PAUSE_TIMEOUT_MS,
+    /** Longest wait for the previous session's cleanup ([SessionGate]) before giving up with a "try again". */
+    val gateTimeoutMs: Long = DEFAULT_GATE_TIMEOUT_MS,
     /** Catch trials needed before the mid-test "answers looked like guesses" prompt can fire. */
     val earlyReliabilityMinCatches: Int = TestSession.EARLY_RELIABILITY_MIN_CATCHES,
 ) {
     companion object {
         const val DEFAULT_PAUSE_TIMEOUT_MS = 5L * 60L * 1000L
+        const val DEFAULT_GATE_TIMEOUT_MS = 5_000L
     }
 }
 
@@ -154,11 +158,12 @@ class TestSession(
     private val rng = config.random
     @Volatile private var job: Job? = null
 
-    /** Set at the top of the cleanup `finally`: from then on no input may touch volume, focus or audio again. */
-    @Volatile private var cleanupStarted = false
-
-    /** The pause timed out: a Continue that races it is ignored (the session is about to end or to save). */
-    @Volatile private var pauseTimedOut = false
+    /**
+     * Set when the pause timeout fires and at the top of the cleanup `finally`: from then on a Continue may not touch
+     * volume or focus again (the session is about to end or to save). One flag, so the timeout-unwinding window
+     * (job still active, cleanup not started yet) and the cleanup itself are guarded by the same check.
+     */
+    @Volatile private var resumeClosed = false
 
     // ---- pause machinery -------------------------------------------------------------------------------------
     private val reasons = MutableStateFlow<Set<PauseReason>>(emptySet())
@@ -209,6 +214,26 @@ class TestSession(
     /** Quick: a trial is open and an answer would count now (tests). */
     internal val responseArmed: Boolean get() = responseRef.get() != null
 
+    /** Thorough: a confirm would count now (tests). */
+    internal val dialArmed: Boolean get() = dialRef.get() != null
+
+    private var quickTrialCounter = 0
+
+    /** Frequency the Quick screen shows: the last ANSWERED trial's (1 kHz before the first). */
+    private var quickShownFreq = CHECK_FREQ_HZ
+
+    /** Frequency of the Quick trial being presented (tests: the simulated listener; never shown before the answer). */
+    @Volatile internal var quickTrialFreq = 0
+        private set
+
+    /** Id of the Quick trial being presented (set before its stimulus is queued; tests). */
+    @Volatile internal var quickTrialId = 0
+        private set
+    private val _armedTrial = MutableStateFlow(0)
+
+    /** Id of the last Quick trial whose answers became armed (tests: answer exactly that trial). */
+    internal val armedTrial: StateFlow<Int> = _armedTrial
+
     fun start(): Job {
         check(job == null) { "already started" }
         val j = scope.launch(start = CoroutineStart.LAZY) { run() }
@@ -231,7 +256,10 @@ class TestSession(
 
     // ---- public inputs ---------------------------------------------------------------------------------------
 
-    /** Counts only once the current step's first beep has played (a double tap cannot answer the next step). */
+    /**
+     * Counts only from [CHANNEL_ANSWER_GUARD_MS] after the step's first beep reached the playback head (the second
+     * tap of a double tap on the previous step lands before that and is ignored).
+     */
     fun answerChannel(answer: ChannelAnswer) {
         channelRef.get()?.complete(answer)
     }
@@ -249,7 +277,12 @@ class TestSession(
         manualVolumeRef.get()?.complete(Unit)
     }
 
-    /** Quick: "I heard it" / "I didn't". Counts only while a trial is open; taps between trials are ignored. */
+    /**
+     * Quick: "I heard it" / "I didn't". Counts only while a trial is open AND at least [MIN_REACTION_MS] after the
+     * stimulus reached the playback head (faster "responses" are anticipations or a re-tap; ignored silently, the
+     * trial stays open). Catch trials follow the same rule, so they stay indistinguishable. Taps between trials are
+     * ignored.
+     */
     fun respond(heard: Boolean) {
         responseRef.get()?.complete(heard)
     }
@@ -264,7 +297,10 @@ class TestSession(
         }
     }
 
-    /** Thorough: "I can't hear it anymore" (descending) / "I can hear it now" (ascending). */
+    /**
+     * Thorough: "I can't hear it anymore" (descending) / "I can hear it now" (ascending). Like [dialLimit], counts
+     * only from [MIN_REACTION_MS] after the run's first pulse reached the playback head.
+     */
     fun dialConfirm() {
         dialRef.get()?.complete(DialAction.Confirm(dialPosition.value))
     }
@@ -288,7 +324,7 @@ class TestSession(
 
     /** The user asked to continue. Re-establishes focus / volume first; stays paused when that fails. */
     fun resume() {
-        if (cleanupStarted || pauseTimedOut || job?.isActive != true) return
+        if (resumeClosed || job?.isActive != true) return
         scope.launch { resumeNow() }
     }
 
@@ -333,11 +369,16 @@ class TestSession(
     private fun isTestRunning(): Boolean = _state.value.let { !it.isAfterCleanup && it !is SessionState.Saving }
 
     private suspend fun run() {
-        try {
-            deps.gate.mutex.lock(this)
+        val locked = try {
+            // A previous session whose cleanup is wedged must not leave the user on "Starting" forever.
+            withTimeoutOrNull(config.gateTimeoutMs) { deps.gate.mutex.lock(this@TestSession) } != null
         } catch (e: CancellationException) {
             _state.value = SessionState.Aborted(AbortReason.USER) // nothing acquired yet
             throw e
+        }
+        if (!locked) {
+            _state.value = SessionState.Aborted(AbortReason.PREVIOUS_SESSION_BUSY) // nothing acquired; Try again
+            return
         }
         try {
             runOwned()
@@ -424,7 +465,9 @@ class TestSession(
         } catch (e: AbortException) {
             terminal = SessionState.Aborted(e.reason)
         } catch (e: CancellationException) {
-            terminal = SessionState.Aborted(AbortReason.USER)
+            // Exit during Saving: the store completes the write regardless (NonCancellable), so a stored test ends
+            // Finished (the outcome matches the database); anything else is a user abort.
+            if (terminal !is SessionState.Finished) terminal = SessionState.Aborted(AbortReason.USER)
             throw e
         } catch (e: Throwable) {
             lastFailure = e
@@ -432,7 +475,7 @@ class TestSession(
         } finally {
             // From here on a queued input (Continue racing Exit or the pause timeout) must not re-raise the volume
             // or re-take focus: resumeNow() checks this flag. Everything below is synchronous on the session thread.
-            cleanupStarted = true
+            resumeClosed = true
             // Order matters (P0): nothing may be audible once the token is gone, so the stream goes first and the
             // bypass token last. Every step is guarded: a failure in one must not skip the next.
             runCatching { deps.tone.close() }
@@ -496,9 +539,10 @@ class TestSession(
         reasons.update { it + reason }
     }
 
-    private fun resumeNow() {
+    /** Runs on the session thread; internal so a test can call it inside the cleanup window. */
+    internal fun resumeNow() {
         // A resume task queued behind the cleanup (Exit, pause timeout) must not touch volume or focus again.
-        if (cleanupStarted || pauseTimedOut || job?.isActive != true) return
+        if (resumeClosed || job?.isActive != true) return
         val current = reasons.value
         if (current.isEmpty() || !foreground.value) return
         val cleared = mutableSetOf<PauseReason>()
@@ -537,7 +581,7 @@ class TestSession(
         }
         // A Continue that cleared every reason in the same instant as the timeout wins (the pause did end in time).
         if (finished == null && reasons.value.isNotEmpty()) {
-            pauseTimedOut = true
+            resumeClosed = true
             throw AbortException(AbortReason.PAUSE_TIMEOUT)
         }
         resumeState?.let { _state.value = afterPause(it) }
@@ -634,6 +678,24 @@ class TestSession(
         }
     }
 
+    /**
+     * Runs [arm] once the first stimulus has reached the playback head (`tone.playing` rises; a silent catch buffer
+     * raises it too) plus [afterMs]. [firstPlayed] completes when that stimulus has played out: if the rise was not
+     * observed (a conflated StateFlow update), the wait counts from there, which is later still.
+     */
+    private fun CoroutineScope.armAfterOnset(firstPlayed: Job, afterMs: Long, arm: () -> Unit): Job = launch {
+        coroutineScope {
+            val onset = async { deps.tone.playing.first { it } }
+            select<Unit> {
+                onset.onAwait { }
+                firstPlayed.onJoin { }
+            }
+            onset.cancel()
+        }
+        delay(afterMs)
+        arm()
+    }
+
     /** Plays one stimulus (a silent catch buffer counts as one) with [inStimulus] raised around it. */
     private suspend fun playStimulus(buffer: StereoBuffer) {
         inStimulus.value = true
@@ -694,26 +756,26 @@ class TestSession(
         }
 
     /**
-     * Repeats the three-pulse beep in [ear] until answered. Answers count only once the step's FIRST beep has played
-     * out: the second tap of a double tap on the previous step lands before that and is ignored (no false
-     * WRONG_EAR, no +5 dB jump).
+     * Repeats the three-pulse beep in [ear] until answered. Answers count from [CHANNEL_ANSWER_GUARD_MS] after the
+     * step's FIRST beep reached the playback head: the second tap of a double tap on the previous step lands before
+     * that and is ignored (no false WRONG_EAR, no +5 dB jump), while an answer during the first beep still counts.
      */
     private suspend fun playUntilChannelAnswer(ear: Ear, level: Double): ChannelAnswer = coroutineScope {
         val answer = CompletableDeferred<ChannelAnswer>()
+        val firstPlayed = Job()
         val player = launch {
-            var armed = false
             while (true) {
                 playStimulus(StimulusSynth.threePulse(ear, CHECK_FREQ_HZ, level, sampleRate))
-                if (!armed) {
-                    armed = true
-                    channelRef.set(answer)
-                }
+                firstPlayed.complete()
                 deps.tone.playSilence(CHECK_GAP_MS)
             }
         }
+        val armer = armAfterOnset(firstPlayed, CHANNEL_ANSWER_GUARD_MS) { channelRef.set(answer) }
         try {
             answer.await()
         } finally {
+            armer.cancel()
+            firstPlayed.cancel()
             channelRef.set(null)
             player.cancel()
         }
@@ -921,12 +983,16 @@ class TestSession(
     private suspend fun quickStep(run: QuickRun): Boolean {
         if (redoRequested.get()) return true
         val engine = run.engine
+        // The test screen is up BEFORE the gap: nothing visible changes at a stimulus onset (DECISIONS §27.1).
+        if (_state.value !is SessionState.Testing) _state.value = quickUi(engine, quickShownFreq, trialOpen = false)
         deps.tone.playSilence(rng.nextInt(QUICK_GAP_MIN_MS, QUICK_GAP_MAX_MS + 1))
         ensureVolumeUnchanged()
         val trial = engine.next() ?: return true
         run.inFlight = trial
         run.times[trial.seq] = deps.clock.monotonicMs() - t0
-        _state.value = quickUi(engine, trial.freqHz, trialOpen = true)
+        quickTrialFreq = trial.freqHz
+        // Only the (invisible) trialOpen flag changes at onset; the wave keeps the last answered trial's frequency.
+        _state.value = quickUi(engine, quickShownFreq, trialOpen = true)
 
         val heard = presentQuickTrial(trial)
 
@@ -938,7 +1004,8 @@ class TestSession(
         run.inFlight = null
         // Haptics / announcements only now: the stimulus has been stopped (trap #20).
         emitWhenSilent(SessionSignal.Responded(heard))
-        _state.value = quickUi(engine, trial.freqHz, trialOpen = false)
+        quickShownFreq = trial.freqHz
+        _state.value = quickUi(engine, quickShownFreq, trialOpen = false)
         if (trial.isCatch && !unreliableAcknowledged.get() &&
             engine.catchTrialCount >= config.earlyReliabilityMinCatches && engine.isUnreliable
         ) {
@@ -965,11 +1032,18 @@ class TestSession(
     private suspend fun presentQuickTrial(trial: Trial): Boolean = coroutineScope {
         val answer = CompletableDeferred<Boolean>()
         val buffer = if (trial.isCatch) silentStimulus() else StimulusSynth.threePulse(trial.ear, trial.freqHz, trial.levelDbfs!!, sampleRate)
+        val id = ++quickTrialCounter
+        quickTrialId = id
         val player = launch { playStimulus(buffer) }
-        responseRef.set(answer)
+        // Minimum reaction time: answers count only from MIN_REACTION_MS after the stimulus reached the playback head.
+        val armer = armAfterOnset(player, MIN_REACTION_MS) {
+            responseRef.set(answer)
+            _armedTrial.value = id
+        }
         try {
             val heard = answer.await()
             responseRef.set(null)
+            armer.cancel()
             // Unconditionally: a no-op when nothing is emitting; ramps the stimulus down and waits otherwise. Reading
             // `playing` first would race the onset (queued but not yet under the head).
             deps.tone.stopCurrent()
@@ -977,6 +1051,7 @@ class TestSession(
             player.join()
             heard
         } finally {
+            armer.cancel()
             responseRef.set(null)
             player.cancel()
         }
@@ -1054,22 +1129,29 @@ class TestSession(
      * there (trap #20). A level change takes effect at the next pulse.
      */
     private suspend fun presentDialRun(run: DialRun): DialAction = coroutineScope {
-        val action = CompletableDeferred<DialAction>().also { dialRef.set(it) }
+        val action = CompletableDeferred<DialAction>()
+        val firstPlayed = Job()
         val looper = launch {
             while (true) {
                 val level = run.levelAt(dialPosition.value)
                 playStimulus(StimulusSynth.singlePulse(run.ear, run.freqHz, level, sampleRate))
+                firstPlayed.complete()
                 deps.tone.playSilence(StimulusSynth.GAP_MS)
             }
         }
+        // Confirm / limit count only from MIN_REACTION_MS after the run's first pulse reached the playback head.
+        val armer = armAfterOnset(firstPlayed, MIN_REACTION_MS) { dialRef.set(action) }
         try {
             val a = action.await()
+            armer.cancel()
             dialRef.set(null)
             deps.tone.stopCurrent() // ramps a pulse down and waits until it is silent (no-op in a gap)
             looper.cancel()
             looper.join()
             a
         } finally {
+            armer.cancel()
+            firstPlayed.cancel()
             dialRef.set(null)
             looper.cancel()
         }
@@ -1102,6 +1184,17 @@ class TestSession(
         const val CHANNEL_CHECK_CAP_DBFS = -30.0
         const val CHECK_GAP_MS = 1500
         const val CHECK_RETRY_PAUSE_MS = 1200
+
+        /**
+         * Minimum reaction time after the stimulus reached the playback head (Quick answers, Thorough confirm/limit).
+         * The simple auditory reaction-time floor is about 100-150 ms (faster is anticipation), near-threshold
+         * responses take 300 ms or more, and Bluetooth adds 100-300 ms after the head, so a genuine response is never
+         * rejected; a re-tap at the next trial's onset always is.
+         */
+        const val MIN_REACTION_MS = 200L
+
+        /** Channel check: answers count from this long after the step's first beep reached the playback head. */
+        const val CHANNEL_ANSWER_GUARD_MS = 300L
 
         /** Calibration taps in the first second of each ramp are ignored (double taps; nobody hears -84 dBFS). */
         const val CAL_TAP_GUARD_MS = 1000L
