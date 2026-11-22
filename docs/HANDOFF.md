@@ -35,8 +35,27 @@ deferred (§1.3). What remains is the on-device checklist (`docs/HARDWARE_TEST.m
   - **Preference test:** opening it again goes straight to fine-tune.
 
 ### 1.2 Review of M9a round 2
-An independent review of round 2 (`641d78f..2caf5e9`, merged as `4552e35`) was running at the time of writing; see
-the section appended below, or `git log` for a follow-up commit, for its outcome.
+Independent review of round 2 (`641d78f..2caf5e9`, merged as `4552e35`): **request changes, no MUST-FIX**. The
+P0 order was verified, and 108 + 45 tests passed on a forced rerun. Round 3 (§27.2) was sent to the implementer to
+fix these items. If no "Merge M9a review round 3" commit is in `git log`, they are still open:
+1. **Gate lock leak** (`TestSession.kt` ~374). `withTimeoutOrNull { mutex.lock(owner) }`: a cancel or timeout right
+   after `lock()` returns leaves the `@Singleton` mutex held, so every later test ends PREVIOUS_SESSION_BUSY until
+   the process dies. A probe confirmed it. Fix: unlock if `holdsLock(owner)` on the null and catch paths.
+2. **Quick onset cue after resume or Redo.** `afterPause` republishes stale progress, so the progress drops exactly at
+   the next onset. A probe confirmed it. Fix: publish `quickUi(engine, shownFreq, false)` before the gap whenever it
+   differs from the current state.
+3. **TalkBack acknowledgement skipped on repeated identical answers.** The one-frame blank is lost in Compose's
+   100 ms semantics diff window. Fix: blank for 150 ms or more, or make consecutive texts differ.
+4. **SPEC lines 206 (F7), 244, 263/265 and F6** still describe the trial-locked wave, the current frequency, and
+   "a response during the stimulus counts". Add the Quick exceptions and the 200 ms minimum.
+5. **NITs:**
+   - the channel-check guard can start writer lead + ramp early, not 25 ms;
+   - the rotation mitigation almost never fires, so add `lifecycle-process`/`ProcessLifecycleOwner` (authorized);
+   - a deferred haptic can mark a trial after a main-thread stall;
+   - Back during `retrySave` shows "Stop the test?";
+   - `ScriptedTone.dropPlaying` tail race;
+   - docs only: an early tap under 200 ms leaves the trial open with no feedback, and a Bluetooth re-tap is only
+     usually rejected.
 
 ### 1.3 Known gaps and deferred items (lower priority)
 - **Hearing test:**
@@ -137,7 +156,7 @@ the section appended below, or `git log` for a follow-up commit, for its outcome
 
 ## 3. Remaining work (in order)
 
-1. Act on the round-2 review outcome (§1.2) if it requested changes.
+1. Make sure M9a review round 3 (§1.2) is merged; if not, finish the open items listed there.
 2. Run the whole `docs/HARDWARE_TEST.md` checklist on a phone and fill in `docs/PLAYER_COMPAT.md`. New items this
    session cover Bluetooth haptic latency, the Quick no-cue screen, re-tap, abort while unplugged, Samsung mono and
    preference re-entry.
