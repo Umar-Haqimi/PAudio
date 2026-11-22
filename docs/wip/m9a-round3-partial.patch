@@ -1,0 +1,160 @@
+diff --git a/feature/hearingtest/src/main/kotlin/my/umarh/paudio/feature/hearingtest/SessionScreens.kt b/feature/hearingtest/src/main/kotlin/my/umarh/paudio/feature/hearingtest/SessionScreens.kt
+index 102bed3..ee584c9 100644
+--- a/feature/hearingtest/src/main/kotlin/my/umarh/paudio/feature/hearingtest/SessionScreens.kt
++++ b/feature/hearingtest/src/main/kotlin/my/umarh/paudio/feature/hearingtest/SessionScreens.kt
+@@ -51,7 +51,7 @@ internal fun SessionScreen(
+             TestMode.THOROUGH -> ThoroughScreen(session, stimulusPlaying, actions)
+         }
+         is SessionState.Paused -> PausedScreen(session, actions)
+-        SessionState.Saving, is SessionState.Finished -> Status(stringResource(R.string.hearingtest_saving))
++        SessionState.Saving, SessionState.RetrySaving, is SessionState.Finished -> Status(stringResource(R.string.hearingtest_saving))
+         is SessionState.Aborted -> AbortedScreen(session, actions, onClose)
+         is SessionState.SaveFailed -> SaveFailedScreen(session, actions, onClose)
+     }
+diff --git a/feature/hearingtest/src/main/kotlin/my/umarh/paudio/feature/hearingtest/SessionState.kt b/feature/hearingtest/src/main/kotlin/my/umarh/paudio/feature/hearingtest/SessionState.kt
+index 53ac9bc..031b577 100644
+--- a/feature/hearingtest/src/main/kotlin/my/umarh/paudio/feature/hearingtest/SessionState.kt
++++ b/feature/hearingtest/src/main/kotlin/my/umarh/paudio/feature/hearingtest/SessionState.kt
+@@ -121,6 +121,9 @@ sealed interface SessionState {
+ 
+     data object Saving : SessionState
+ 
++    /** A retry after [SaveFailed] is storing the test (no audio held; Back asks "Leave without saving?"). */
++    data object RetrySaving : SessionState
++
+     /** Terminal; emitted only after the stream is closed, the volume restored and the bypass token released. */
+     data class Finished(val testId: Long) : SessionState
+ 
+@@ -139,12 +142,16 @@ sealed interface SessionState {
+ 
+ /** No more audio, volume, focus or bypass is held in this state (the session's cleanup has run). */
+ internal val SessionState.isAfterCleanup: Boolean
+-    get() = this is SessionState.Finished || this is SessionState.Aborted || this is SessionState.SaveFailed
++    get() = this is SessionState.Finished || this is SessionState.Aborted || this is SessionState.SaveFailed ||
++        this is SessionState.RetrySaving
+ 
+ /** One-off signals for haptics / accessibility, emitted only AFTER the stimulus has stopped (SPEC §2.2 #20). */
+ sealed interface SessionSignal {
+-    data class Responded(val heard: Boolean) : SessionSignal
++    val stimulusSeq: Long
++
++    /** [stimulusSeq]: [TestSession.stimulusSeq] at emission (a newer value at fire time means: drop it). */
++    data class Responded(val heard: Boolean, override val stimulusSeq: Long = 0) : SessionSignal
+ 
+     /** A Thorough run was confirmed. */
+-    data object RunConfirmed : SessionSignal
++    data class RunConfirmed(override val stimulusSeq: Long = 0) : SessionSignal
+ }
+diff --git a/feature/hearingtest/src/main/kotlin/my/umarh/paudio/feature/hearingtest/TestSession.kt b/feature/hearingtest/src/main/kotlin/my/umarh/paudio/feature/hearingtest/TestSession.kt
+index 2041edd..cad4e94 100644
+--- a/feature/hearingtest/src/main/kotlin/my/umarh/paudio/feature/hearingtest/TestSession.kt
++++ b/feature/hearingtest/src/main/kotlin/my/umarh/paudio/feature/hearingtest/TestSession.kt
+@@ -155,6 +155,15 @@ class TestSession(
+     /** Current value of [pulseAudible] (tests / assertions). */
+     internal val isPulseAudibleNow: Boolean get() = inStimulus.value || deps.tone.playing.value
+ 
++    private val stimulusCounter = java.util.concurrent.atomic.AtomicLong(0)
++
++    /**
++     * Stimuli started so far (silent catch presentations included). Signals carry the value at emission: a UI that
++     * sees a larger value when it gets round to firing knows another stimulus has started since, and drops the signal
++     * instead of marking that stimulus with a late haptic.
++     */
++    val stimulusSeq: Long get() = stimulusCounter.get()
++
+     private val rng = config.random
+     @Volatile private var job: Job? = null
+ 
+@@ -352,7 +361,7 @@ class TestSession(
+         if (!retrying.compareAndSet(false, true)) return
+         try {
+             val request = if (useActiveProfile) original.withoutRequestedProfile().also { pendingSave = it } else original
+-            _state.value = SessionState.Saving
++            _state.value = SessionState.RetrySaving
+             _state.value = try {
+                 trySave(request)
+             } catch (e: CancellationException) {
+@@ -369,14 +378,19 @@ class TestSession(
+     private fun isTestRunning(): Boolean = _state.value.let { !it.isAfterCleanup && it !is SessionState.Saving }
+ 
+     private suspend fun run() {
++        val gate = deps.gate.mutex
+         val locked = try {
+             // A previous session whose cleanup is wedged must not leave the user on "Starting" forever.
+-            withTimeoutOrNull(config.gateTimeoutMs) { deps.gate.mutex.lock(this@TestSession) } != null
++            withTimeoutOrNull(config.gateTimeoutMs) { gate.lock(this@TestSession) } != null
+         } catch (e: CancellationException) {
+-            _state.value = SessionState.Aborted(AbortReason.USER) // nothing acquired yet
++            // A cancellation that lands after lock() returned but before the block completed drops the result while
++            // the (process-wide) gate stays locked by this session: release it, or every later test would wait.
++            if (gate.holdsLock(this)) gate.unlock(this)
++            _state.value = SessionState.Aborted(AbortReason.USER) // nothing else acquired yet
+             throw e
+         }
+-        if (!locked) {
++        // Same race with the timeout: it can fire right after lock() returned. Owning the gate is what counts.
++        if (!locked && !gate.holdsLock(this)) {
+             _state.value = SessionState.Aborted(AbortReason.PREVIOUS_SESSION_BUSY) // nothing acquired; Try again
+             return
+         }
+@@ -698,6 +712,7 @@ class TestSession(
+ 
+     /** Plays one stimulus (a silent catch buffer counts as one) with [inStimulus] raised around it. */
+     private suspend fun playStimulus(buffer: StereoBuffer) {
++        stimulusCounter.incrementAndGet()
+         inStimulus.value = true
+         try {
+             deps.tone.play(buffer)
+@@ -710,9 +725,9 @@ class TestSession(
+      * Emits a haptic/announcement signal only while nothing is audible (trap #20). The callers have already stopped
+      * the stimulus; the wait is a guard for a tone output whose flag lags. Dropped rather than emitted over a tone.
+      */
+-    private suspend fun emitWhenSilent(signal: SessionSignal) {
++    private suspend fun emitWhenSilent(signal: (stimulusSeq: Long) -> SessionSignal) {
+         if (deps.tone.playing.value) withTimeoutOrNull(SILENCE_WAIT_MS) { deps.tone.playing.first { !it } }
+-        if (!isPulseAudibleNow) _signals.tryEmit(signal)
++        if (!isPulseAudibleNow) _signals.tryEmit(signal(stimulusCounter.get()))
+     }
+ 
+     // ---- channel check (F3) ----------------------------------------------------------------------------------
+@@ -761,6 +776,10 @@ class TestSession(
+      * that and is ignored (no false WRONG_EAR, no +5 dB jump), while an answer during the first beep still counts.
+      */
+     private suspend fun playUntilChannelAnswer(ear: Ear, level: Double): ChannelAnswer = coroutineScope {
++        // The previous step's beep ends with a 25 ms ramp after the answer; a beep queued straight behind it would
++        // keep `playing` true across both, and the guard would start early (by the ramp plus the writer lead). Wait
++        // for silence first, so the guard always starts at THIS beep's rise.
++        if (deps.tone.playing.value) withTimeoutOrNull(SILENCE_WAIT_MS) { deps.tone.playing.first { !it } }
+         val answer = CompletableDeferred<ChannelAnswer>()
+         val firstPlayed = Job()
+         val player = launch {
+@@ -984,7 +1003,10 @@ class TestSession(
+         if (redoRequested.get()) return true
+         val engine = run.engine
+         // The test screen is up BEFORE the gap: nothing visible changes at a stimulus onset (DECISIONS §27.1).
+-        if (_state.value !is SessionState.Testing) _state.value = quickUi(engine, quickShownFreq, trialOpen = false)
++        // Also after a resume (restartPoint lowered the progress) and after Redo (a fresh engine): publish the idle
++        // screen of THIS engine now, so the onset itself changes nothing visible.
++        val idle = quickUi(engine, quickShownFreq, trialOpen = false)
++        if (_state.value != idle) _state.value = idle
+         deps.tone.playSilence(rng.nextInt(QUICK_GAP_MIN_MS, QUICK_GAP_MAX_MS + 1))
+         ensureVolumeUnchanged()
+         val trial = engine.next() ?: return true
+@@ -1003,7 +1025,7 @@ class TestSession(
+         engine.submit(heard)
+         run.inFlight = null
+         // Haptics / announcements only now: the stimulus has been stopped (trap #20).
+-        emitWhenSilent(SessionSignal.Responded(heard))
++        emitWhenSilent { seq -> SessionSignal.Responded(heard, seq) }
+         quickShownFreq = trial.freqHz
+         _state.value = quickUi(engine, quickShownFreq, trialOpen = false)
+         if (trial.isCatch && !unreliableAcknowledged.get() &&
+@@ -1095,7 +1117,7 @@ class TestSession(
+             is DialAction.Limit -> engine.reportLimit(action.position)
+         }
+         runTimes += deps.clock.monotonicMs() - t0
+-        emitWhenSilent(SessionSignal.RunConfirmed)
++        emitWhenSilent { seq -> SessionSignal.RunConfirmed(seq) }
+         _state.value = SessionState.Testing(
+             TestMode.THOROUGH, engine.progress.toFloat(), engine.completedPoints, engine.totalPoints,
+             run.freqHz, trialOpen = false, dial = null, calibrationWarning = calWarning,

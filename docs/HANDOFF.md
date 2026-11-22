@@ -1,14 +1,16 @@
 # PAudio — Handoff note
 
-> Written by the orchestrating Claude session at the end of session 3. Read this first, then `SPEC.md` (source of
+> Written by the orchestrating Claude session at the end of session 3 (stopped at the user's usage limit while
+> M9a review round 3 was in progress; see §1.2 to resume it). Read this first, then `SPEC.md` (source of
 > truth), `docs/DECISIONS.md` (decisions that override the spec where upstream code or measurement disagrees) and
 > `docs/PROGRESS.md` (per-milestone details).
 > Branch: `ccr-3fc57dcb-jfyrv1`. Everything listed as merged is pushed.
 
 ## 1. Where things stand
 
-Every milestone M0–M13 has code merged, and every review finding from sessions 2 and 3 is fixed or explicitly
-deferred (§1.3). What remains is the on-device checklist (`docs/HARDWARE_TEST.md`) and small polish.
+Every milestone M0–M13 has code merged. Every review finding from sessions 2 and 3 is fixed or explicitly deferred
+(§1.3), **except the M9a round-3 items in §1.2**. Those are partly done as an uncommitted patch. After them, what
+remains is the on-device checklist (`docs/HARDWARE_TEST.md`) and small polish.
 
 | Milestone | State | Reviews |
 |---|---|---|
@@ -19,6 +21,8 @@ deferred (§1.3). What remains is the on-device checklist (`docs/HARDWARE_TEST.m
 | Preference re-entry bug (user-reported) | ✅ merged (§24.1): re-entry opens on fine-tune, "Redo the A/B test", settings-only save | reviewed by the orchestrator |
 
 ### 1.1 State at handoff
+- **APK:** the user was sent a debug APK built from `1810781`: everything merged, without the round-3 patch. To
+  rebuild it, run `./gradlew :app:assembleDebug`; the output is `app/build/outputs/apk/debug/app-debug.apk`.
 - Whole-project `./gradlew check` passes on the merged tree (`4552e35` and later); `verifyFeatureBoundaries` passes
   alone; `:app:assembleDebug` builds. The trap table (DECISIONS §26.3) reads **19 pinned, 1 device-only (#13),
   0 gaps**.
@@ -37,7 +41,34 @@ deferred (§1.3). What remains is the on-device checklist (`docs/HARDWARE_TEST.m
 ### 1.2 Review of M9a round 2
 Independent review of round 2 (`641d78f..2caf5e9`, merged as `4552e35`): **request changes, no MUST-FIX**. The
 P0 order was verified, and 108 + 45 tests passed on a forced rerun. Round 3 (§27.2) was sent to the implementer to
-fix these items. If no "Merge M9a review round 3" commit is in `git log`, they are still open:
+fix these items. **The implementer was stopped part-way through round 3.** Its uncommitted, untested work is saved in
+`docs/wip/m9a-round3-partial.patch`, made against `1810781` (this branch's tip at the time). Unless a
+"Merge M9a review round 3" commit is in `git log`, the items below are still open.
+
+**Status of the partial patch.** It touches `TestSession.kt`, `SessionState.kt` and `SessionScreens.kt`. It is not
+compiled or tested, so other call sites of the changed signals may still need updating.
+- Done in code, no tests:
+  - item 1, the gate-lock release: `holdsLock` checked on the catch and timeout paths;
+  - item 2, publishing the idle Quick UI before every gap;
+  - the channel-check wait-for-silence before the guard;
+  - the new `SessionState.RetrySaving` (Back during a save retry should ask "Leave without saving?"; the screen-side
+    Back handling is still to check);
+  - a `stimulusSeq` counter, emitted on `SessionSignal`.
+- Not started: the UI half of the late-haptic fix (drop a signal whose `stimulusSeq` is older than the session's
+  current one), item 3 (TalkBack), item 4 (SPEC), `lifecycle-process`, the `ScriptedTone` tail fix, the §27.2
+  DECISIONS entry, and **every test**.
+
+To resume:
+1. `git apply docs/wip/m9a-round3-partial.patch`.
+2. Finish the open items, with a test for each fix (each must fail when its fix is reverted).
+3. Write DECISIONS §27.2.
+4. Delete `docs/wip/`.
+5. Verify, then get an independent review.
+
+Verify commands: `:feature:hearingtest:check :audio:tone:check`, `verifyNoSensitiveLogging`, the permissions guard,
+`:app:assembleDebug`, then `verifyFeatureBoundaries` alone.
+
+Open items:
 1. **Gate lock leak** (`TestSession.kt` ~374). `withTimeoutOrNull { mutex.lock(owner) }`: a cancel or timeout right
    after `lock()` returns leaves the `@Singleton` mutex held, so every later test ends PREVIOUS_SESSION_BUSY until
    the process dies. A probe confirmed it. Fix: unlock if `holdsLock(owner)` on the null and catch paths.
@@ -156,7 +187,8 @@ fix these items. If no "Merge M9a review round 3" commit is in `git log`, they a
 
 ## 3. Remaining work (in order)
 
-1. Make sure M9a review round 3 (§1.2) is merged; if not, finish the open items listed there.
+1. **Finish M9a review round 3** (§1.2): apply `docs/wip/m9a-round3-partial.patch`, complete it with tests, get it
+   independently reviewed (an Opus reviewer is appropriate: P0/concurrency), then merge.
 2. Run the whole `docs/HARDWARE_TEST.md` checklist on a phone and fill in `docs/PLAYER_COMPAT.md`. New items this
    session cover Bluetooth haptic latency, the Quick no-cue screen, re-tap, abort while unplugged, Samsung mono and
    preference re-entry.

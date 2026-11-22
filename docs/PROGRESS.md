@@ -244,3 +244,7 @@ Pending reviews: Opus re-verify of M7a P0 fixes; Sonnet review of M10. See `docs
 
 ## Preference re-entry opens on the fine-tune (DECISIONS 24.1)
 - Re-entering the preference test for a profile that already has one now lands on the fine-tune screen (saved strength and gains, curves, audio only while STARTED); first-timers still get the intro. New "Redo the A/B test" action restarts the wizard. A fine-tune-only session saves just the profile settings (`PreferenceData.saveSettings`, one transaction) and never inserts a test row. Fine-tune song chips now 48 dp wide. Entry labels left static (would need plumbing in home/profiles).
+
+## Session 3 — M9a review round 3 (IN PROGRESS, not merged)
+- The round-2 review (independent, no MUST-FIX) asked for: a gate-lock release on the cancel/timeout race; no Quick progress change at the onset after a resume or Redo; a TalkBack acknowledgement that survives Compose's 100 ms semantics window; the remaining SPEC lines; plus NITs (channel-check guard, `lifecycle-process`, late haptics, Back during a save retry, ScriptedTone tail).
+- The session ended at the user's usage limit with this work partly done. The uncommitted, untested patch is in `docs/wip/m9a-round3-partial.patch`; HANDOFF §1.2 lists what is done and what is open.
