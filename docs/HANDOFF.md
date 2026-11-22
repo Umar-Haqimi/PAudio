@@ -1,213 +1,183 @@
 # PAudio — Handoff note
 
-> Written by the orchestrating Claude session when usage ran low (second session). Read this first, then
-> `SPEC.md` (source of truth), `docs/DECISIONS.md` (decisions that override the spec where upstream code or
-> measurement disagrees) and `docs/PROGRESS.md` (per-milestone details).
-> Branch: `ccr-87631b24-yga4qb`. Everything listed as merged is pushed.
+> Written by the orchestrating Claude session at the end of session 3. Read this first, then `SPEC.md` (source of
+> truth), `docs/DECISIONS.md` (decisions that override the spec where upstream code or measurement disagrees) and
+> `docs/PROGRESS.md` (per-milestone details).
+> Branch: `ccr-3fc57dcb-jfyrv1`. Everything listed as merged is pushed.
 
 ## 1. Where things stand
 
-Every milestone M0–M13 now has code merged. What remains is fixing review findings (§1.2), checks that need a
-real phone (`docs/HARDWARE_TEST.md`), and polish.
+Every milestone M0–M13 has code merged, and every review finding from sessions 2 and 3 is fixed or explicitly
+deferred (§1.3). What remains is the on-device checklist (`docs/HARDWARE_TEST.md`) and small polish.
 
-| Milestone | Module(s) | State | Implemented by → reviewed by |
-|---|---|---|---|
-| M0 Research & decisions | `docs/DECISIONS.md`, `docs/VECTORS.md` | ✅ merged | Sonnet → orchestrator |
-| M1 Skeleton | build-logic, all modules, CI, `verifyPermissions`, core purity guard | ✅ merged (+ fixes) | Sonnet → Opus |
-| M2 DSP | `:core:dsp` + golden sets 1–4, 5c, 6 | ✅ merged (+ fixes) | Sonnet → Opus |
-| M3 Audiometry | `:core:audiometry` + golden sets 5a, 7, 8 | ✅ merged (+ fixes) | Sonnet → Opus |
-| M4 Preference + demo assets | `:core:preference`, golden set 9, NIN clips | ✅ merged | Sonnet → Sonnet |
-| M5 Data | `:data` | ✅ merged (+ fixes) | Sonnet → Sonnet |
-| M6 Tone + device | `:audio:tone`, `:audio:device` | ✅ merged (+ fixes) | Sonnet → Sonnet |
-| M7a Effect engine | `:audio:effect` | ✅ merged; P0 races fixed and **Opus re-verified** (DECISIONS §19) | Sonnet → Opus ×2 |
-| M7b A/B player | `:audio:playback` | ✅ merged (+ fixes) | Sonnet → Sonnet |
-| M7c Service + use cases | `:service` | ✅ merged (+ Opus review fixes, §20/§20.1) | Sonnet → Opus |
-| M8a Design system | `:designsystem` | ✅ merged (+ fixes) | Sonnet → Sonnet |
-| M8b Onboarding/Home/Profiles/Settings | `:feature:onboarding/home/profiles/settings`, `:app` | ✅ merged (+ review fixes) | Sonnet (finished by orchestrator) → Sonnet |
-| M9a Hearing-test flow | `:feature:hearingtest` | ✅ merged; **Opus review findings NOT yet fixed — see §1.2** | Sonnet → Opus |
-| M9b Results | `:feature:results` | ✅ merged (+ review fixes) | Sonnet → Sonnet |
-| M10 Hearing health | `:feature:health` | ✅ merged (+ review fixes) | Sonnet → Sonnet |
-| M11 Preference test + fine-tune | `:feature:preference` | ✅ merged (+ all 9 review fixes, §24) | Sonnet → Sonnet |
-| M12 Hardening | all | ✅ merged (DECISIONS §26); **no Opus review yet** | Sonnet → (none) |
-| M13 Docs | README, LICENSE (GPL-3.0), PRIVACY, HARDWARE_TEST, PLAYER_COMPAT, VECTORS | ✅ merged | Sonnet → orchestrator |
+| Milestone | State | Reviews |
+|---|---|---|
+| M0–M8b, M9b–M11, M13 | ✅ merged (sessions 1–2) | see `docs/PROGRESS.md` |
+| M9a Hearing-test flow | ✅ merged; all session-2 findings fixed (DECISIONS §27), review round 2 fixed (§27.1) | round 1 approved (no MUST-FIX); round 2: see §1.2 |
+| M12 Hardening | ✅ merged; reviewed this session: approve, no MUST-FIX. Both SHOULD-FIXes fixed (logging guard §29, trap 5 pinned §27) | ✅ |
+| Session-3 polish | ✅ merged (§28): deferred volume restore, Results redo profileId, `:data` transactions, `:app` tests, Samsung mono, `gen_all.py --check` | reviewed by the orchestrator (one hearing-safety fix sent back and fixed) |
+| Preference re-entry bug (user-reported) | ✅ merged (§24.1): re-entry opens on fine-tune, "Redo the A/B test", settings-only save | reviewed by the orchestrator |
 
 ### 1.1 State at handoff
-No agents are running. The whole-project `./gradlew check assembleDebug` passed on M12's branch and the debug APK builds (`./gradlew :app:assembleDebug`); the module checks of
-every merged module passed on the merged tree; `verifyFeatureBoundaries` (run alone) passes.
+- Whole-project `./gradlew check` passes on the merged tree (`4552e35` and later); `verifyFeatureBoundaries` passes
+  alone; `:app:assembleDebug` builds. The trap table (DECISIONS §26.3) reads **19 pinned, 1 device-only (#13),
+  0 gaps**.
+- **What changed for users this session:**
+  - **Hearing test:**
+    - No double sessions on a double-tapped Start, and no stuck Paused screen.
+    - Haptics and announcements only in silence.
+    - Answers count only from 200 ms after a tone reaches the playback head.
+    - **No visual timing cue in Quick.** This was the spec owner's decision; SPEC was updated (§27.1).
+    - A failed save offers Retry, and Back asks before discarding.
+    - The save is one transaction.
+  - **Volume:** leaving a test while the headset is unplugged never writes to the speaker. The original volume
+    returns when the same headset type reconnects, and is never raised if it was lowered during the test.
+  - **Preference test:** opening it again goes straight to fine-tune.
 
-**The current debug APK** has the full flow: onboarding → Home (status chip, Personalized/Original, strength) →
-hearing test (pre-test checks, channel check, calibration, Quick/Thorough, pause/resume) → Results (butterfly,
-loudness-matched A/B, EQ graph) → preference test (bisection + fine-tune) → Profiles/Settings/About/Health, with the
-foreground service applying the system-wide DynamicsProcessing EQ.
+### 1.2 Review of M9a round 2
+An independent review of round 2 (`641d78f..2caf5e9`, merged as `4552e35`) was running at the time of writing; see
+the section appended below, or `git log` for a follow-up commit, for its outcome.
 
-### 1.2 Open review findings (fix these first)
-Opus reviewed M9a at f4cd05c (verdict: request changes). These findings are **not fixed yet**; the user asked to
-stop spawning agents. All paths are under `feature/hearingtest/src/main/kotlin/.../hearingtest/` unless noted. Each was
-confirmed by the reviewer with throwaway probe tests (not committed).
-
-**MUST-FIX**
-1. **Resume during the channel check (or calibration) leaves the Paused screen up while tones play.**
-   - **Where:** `TestSession.kt` ~512 and ~419-442.
-   - **Cause:** `channelCheck` publishes `ChannelCheck` before `pausable{}`. `awaitNotPaused` publishes `Paused`, but
-     when the reasons clear nothing republishes the previous state. The user is stuck with no Left/Right buttons and
-     the only way out is Exit.
-   - **Guaranteed trigger:** focus refused at start (a call is active). Also likely after volume-up on a quiet beep.
-   - **Quick is affected too:** `Paused` stays up through the 400-1200 ms gap and swaps exactly at stimulus onset
-     (trap #20).
-   - **Fix:** remember the last non-Paused state in `awaitNotPaused` and republish it (Quick with `trialOpen=false`).
-   - **Tests:** add pause tests in ChannelCheck and Calibrating.
-2. **P0 leak: a double tap on "Start the test" starts two sessions.**
-   - **Where:** `HearingTestViewModel.kt` ~249-276.
-   - **Cause:** the `session != null` guard runs before a `launch` that suspends in `env.snapshot()`/`store.check`. The
-     orphan session holds a bypass token forever and shares the singleton tone output, volume controller and focus
-     monitor.
-   - **Fix:** set a synchronous `starting`/`startJob` flag, disable Start while it is set, and add a process-wide
-     session mutex so a new session waits for the old one's `finally`.
-   - **Tests:** a VM test that calls `startTest()` twice.
-3. **A `resume()` that runs after cleanup re-raises the volume and keeps exclusive audio focus.**
-   - **Where:** `TestSession.kt` ~239-241 and ~397-417.
-   - **Cause:** `resumeNow` has no liveness check, and queued executor tasks still run after shutdown.
-   - **Trigger:** Exit then Continue within the up-to-500 ms writer join, or Continue racing the pause timeout.
-   - **Fix:** set a `cleanupStarted` flag at the top of `run()`'s finally; `resumeNow` returns if it is set or
-     `job?.isActive != true`.
-4. **(Likely MUST-FIX, trap #20) The Thorough dial's deferred haptic tick lands at the next pulse onset, not in the
-   gap.**
-   - **Where:** `LevelDial.kt` ~53-64; `audio/tone/.../StreamEngine.kt` `poll` ~141-154;
-     `StimulusSynth.loopingPulsedTone` ~98-104.
-   - **Cause:** `playing` stays true through each 425 ms period (225 ms pulse + 200 ms gap) and drops only for the
-     writer's lead time just before the next pulse.
-   - **Fix:** the session exposes its own `pulseAudible` flow, with pulse and gap played as separate buffers, and the
-     tick fires when the flag drops.
-   - **On Bluetooth:** head position ignores sink latency (consider `AudioTrack.getTimestamp`; HARDWARE_TEST item).
-
-**SHOULD-FIX**
-1. **Calibration double tap** after a Rerun registers at about -90 dBFS and lowers the volume in the wrong
-   direction. Fix: ignore taps in roughly the first 1 s of each ramp (`TestSession.kt` ~576-646).
-2. **Channel-check double taps:** answers are accepted before the step's first beep (false WRONG_EAR, +10 dB jumps).
-   Fix: accept answers only after the first beep (`TestSession.kt` ~510-556).
-3. **An answer can be recorded before the volume/headset event arrives.** Fix: in `quickStep` (~725-748) check the
-   live volume index and the headset synchronously before `engine.submit`.
-4. **Abort while unplugged restores the volume on the wrong device** (`audio/tone/VolumeLogic.kt` ~100-113). Fix:
-   defer the restore until the start device reconnects, and never write to the speaker.
-5. **Calibration cache key lacks the listener** (`Ports.kt` ~94-107). Retesting another listener within 30 min
-   reuses `L_ref`. Fix: add the listener id to the key.
-6. **The end-of-test "unreliable" prompt counts toward the 5-min pause timeout** and can discard a finished test.
-   Fix: on timeout save with `reliable=false`, or release the audio and token while the prompt shows.
-7. **Results "Test again" drops the profileId** (`app/.../navigation/PAudioNavHost.kt` ~71). Fix: pass the test's
-   profileId to `HearingTestRoute(profileId)`.
-8. **Quick buttons toggle `enabled` at stimulus onset** (`SessionScreens.kt` ~194/200), so TalkBack may announce the
-   change. Fix: keep the buttons enabled; the session already ignores taps between trials.
-
-**NIT**
-- **Quick trial cancel:** call `stopCurrent()` unconditionally in `presentQuickTrial`.
-- **Stream failures:** count consecutive ones, not session-wide.
-- **Rotation:** ON_STOP on rotation pauses the test (`HearingTestScreen.kt` ~133).
-- **`RepositoryTestStore` (~50):**
-  - a deleted profile silently saves to the active listener;
-  - the listener, headset and profile inserts and the test save are not in one transaction.
-- **Save failure:** keep the `SaveRequest` and offer a retry.
-- **`LevelDial` drag:** it can lose detents when events batch.
-- **Stale references:** "DECISIONS §20" should read §23 in four files.
-- **`CalibrationSession(minIndex = 0)`:** it ignores the real stream minimum.
-
-**Test-quality notes:**
-- `resumeRestartsOnlyTheInterruptedPoint` asserts little: its main check is skipped when the other ear was done.
-- `ScriptedTone.playing` differs from `StreamEngine`: `playSilence` never sets it.
-
-**Checked OK by the reviewer:**
-- P0 order: token before `tone.open`; cleanup tone → volume → focus → token; terminal state after cleanup.
-- Every exit path goes through the `finally`.
-- CancellationException is rethrown before every broad catch.
-- Responses are attributed per trial.
-- Procedure levels, the guessing prompt and the saved fields match §23.
-- The `HearingTestRoute`/`ResultsRoute` hand-off is correct.
-- Copy rules are kept.
-
-### 1.3 Known gaps and nits (lower priority)
-- **M9a:** if the process dies mid-test, the calibrated volume is left as is, because the original index is not
-  persisted. The spec asks for one random ear in the channel check; both ears are checked instead (§23). Quick
-  simulates at 7.3–8.2 min against the spec's ≤ 6 (unreachable, §18).
-- **M11:** `AndroidPreferenceData.save` writes a `PreferenceTest` and the profile settings as two writes (no `:data`
-  transaction API), guarded only by `NonCancellable`. The Compose test does not run the real ViewModel.
-- **M8b/M9b:** `:app` has no test source set (the `AppViewModel` seed-sync is untested). The `TopAppBar`
-  `ExperimentalMaterial3Api` opt-in in feature modules is deliberate (stable M3; health does the same).
-- **M7a:** `acquire()` waits up to 250 ms (`ACQUIRE_WAIT_MS`) for an in-flight create; `<queries>` and the global
-  headset map need a privacy and real-device check.
-- **M13:** `LICENSE` was copied from the container's `/usr/share/common-licenses/GPL-3` because gnu.org was
-  unreachable; diff it once against https://www.gnu.org/licenses/gpl-3.0.txt. Samsung `mono_audio` is not read by
-  `AndroidEnvironmentChecks`. `gen_all.py --check` is not implemented (VECTORS.md).
-- **Manual-only acceptance items:** everything in `docs/HARDWARE_TEST.md` (USB-DAC mixer rate, BT, boot start on
-  API 35+, Conflict state against another EQ app, ≥ 2 third-party players → `docs/PLAYER_COMPAT.md`, test-retest
-  ≥ 90 % within ±10 dB, A/B duck click-free, loop seams, loudness match by ear, TalkBack and haptics vs stimuli,
-  a full flow on a minified signed APK). The listening check of the clip cut points (DECISIONS §12) is still open.
+### 1.3 Known gaps and deferred items (lower priority)
+- **Hearing test:**
+  - **Process death mid-test:** if the process dies, the calibrated volume is left as is (the original index is not
+    persisted).
+  - **Channel check:** checks both ears, where the spec asks for one random ear (§23).
+  - **Quick duration:** simulates at 7.3–8.2 min against the spec's ≤ 6 (unreachable, §18).
+  - **Rotation, then screen-off:** if the screen turns off before the recreated activity composes, a window of a few
+    hundred ms remains. Closing it fully needs `androidx.lifecycle:lifecycle-process` (`ProcessLifecycleOwner`)
+    added to the version catalog (§27.1).
+  - **Thorough pulse period:** about 425 ms plus the writer lead, not sample-accurate (optional; §27.1).
+  - **Live headset check:** it reads the device StateFlow, so a late `AudioDeviceCallback` can still race it.
+  - **First-test calibration cache:** the first test's calibration is cached with listener = null, so a retest
+    within 30 min recalibrates (harmless).
+- **Volume restore (§28.1):** the deferred restore is in memory only. It identifies a device by its type, so two
+  USB headsets look the same.
+- **Preference:**
+  - The Home and Profile entry labels still read "Preference test" after one exists ("Fine-tune your sound" would
+    need per-profile state plumbed into `:feature:home` and `:feature:profiles`).
+  - The M11 Compose test does not run the real ViewModel.
+- **Guards:**
+  - `verifyNoSensitiveLogging` scans `src/main` only (not `src/debug`, `src/release` or tests).
+  - `verifyFeatureBoundaries` matches text only: a wildcard import plus a module-wide `-opt-in` would get past it
+    (trap 19).
+- **R8:** `proguard-rules.pro` keeps more than needed. It disables enum unboxing for all app enums and has broad
+  Hilt keeps. This is not a correctness issue; only trim it with a device test of a minified build.
+- **M7a:** `acquire()` waits up to 250 ms (`ACQUIRE_WAIT_MS`) for an in-flight create.
+- **Verified this session, no action needed:** `LICENSE` is byte-identical to gnu.org's GPL-3.0 text; `<queries>`
+  holds only MAIN/LAUNCHER (for app labels in the notification) and there is no `QUERY_ALL_PACKAGES`.
 
 ## 2. Key decisions a successor must know (details in DECISIONS.md)
 
-- **DynamicsProcessing EQ is a brick-wall FFT staircase**: `VARIANT_FAVOR_FREQUENCY_RESOLUTION`, 16 ms frame,
-  **87 bin-aligned bands** (`DpBandLayout.of`), fallback ladder MAIN → FB51 → SPEC40. Always plan through
-  `core:dsp` `DpEqPlanner`; never hand-build cutoffs. Channel 0 = left. Priority 100.
-- **A new DP controller inherits the previous controller's enabled flag** (AOSP passes it on at creation, at
-  control regain and when the controlling handle is released). The engine creates disabled, enables only under
-  `portLock` at install, never creates while a bypass token is held, and calls `disableAndRelease` before every
-  release (§19).
-- **P0 bypass contract**: `BypassController`/`BypassToken` (ref-counted). Hearing test: one `HEARING_TEST` token
-  from before `ToneOutput.open` until after cleanup; cleanup order tone close → volume restore → focus abandon →
-  token close (§23). Results/Preference: the A/B audio exists only while the screen is STARTED
-  (`LifecycleStartEffect`); the VM takes its token before creating the player and releases it on every exit,
-  including a load failure (§21, §24).
-- **Engine API**: setters and `retry()` are asynchronous on a single-thread engine scope; `acquire()` is synchronous.
-  Features talk to `EngineController` (in `:service`) through small feature-local interfaces (`HomeEngine`,
-  `SettingsEngine`) bound with Hilt `@Binds` (§22).
+- **DynamicsProcessing EQ is a brick-wall FFT staircase**:
+  - `VARIANT_FAVOR_FREQUENCY_RESOLUTION`, 16 ms frame, **87 bin-aligned bands** (`DpBandLayout.of`).
+  - Fallback ladder MAIN → FB51 → SPEC40.
+  - Always plan through `core:dsp` `DpEqPlanner`; never hand-build cutoffs. Channel 0 = left. Priority 100.
+- **A new DP controller inherits the previous controller's enabled flag.** AOSP passes it on at creation, at control
+  regain and when the controlling handle is released. So the engine:
+  - creates disabled, and enables only under `portLock` at install;
+  - never creates while a bypass token is held;
+  - calls `disableAndRelease` before every release (§19).
+- **P0 bypass contract**: `BypassController`/`BypassToken` (ref-counted).
+  - **Hearing test:** one `HEARING_TEST` token from before `ToneOutput.open` until after cleanup.
+    - Cleanup order: tone close → volume restore → focus abandon → token close (§23).
+    - A process-wide `SessionGate` (5 s timeout) means a new session waits for the old one's cleanup (§27).
+    - Late resumes are refused once `resumeClosed` is set (§27.1).
+  - **Results/Preference:** the A/B audio exists only while the screen is STARTED (`LifecycleStartEffect`). The VM
+    takes its token before creating the player and releases it on every exit, including a load failure (§21, §24).
+- **Stimulus timing (trap 20):**
+  - **Pulse/gap buffers:** the Thorough loop plays each pulse and its gap as separate buffers, and
+    `StreamEngine.playing` excludes explicit silence.
+  - **Signals:** the session exposes `pulseAudible`/`isStimulusAudibleNow()`, and haptics and announcements fire
+    only in silence.
+  - **Answer arming:** answers are armed 200 ms after the stimulus reaches the playback head (§27, §27.1).
+- **Quick test shows no timing cue** (the hear button and wave are steady); calibration and Thorough pulse (§27.1).
 - **Quick-test targets in SPEC §7.2/§9 are unreachable**; targets relaxed in §18. UI copy "Quick ≈ 6–8 min".
-- **WHO grade almost always reads "Normal"** under the model (§17). Copy: "estimated/approximate/may/consider"; never
-  "diagnose", "detected hearing loss", "your hearing is damaged"; censored points read "beyond test range".
-- **Loudness matching** (`AbGainPlanner`): shared preamp `P_common = max(-15, -max(0,maxG) - 0.5)`, per option
-  `inputGain = P_common − ΔL(G)`, real mixer rate (`outputSampleRate()`).
-- **Routes**: `HearingTestRoute(profileId: Long? = null)` (null = profile created at save time),
-  `ResultsRoute(testId)`, `PreferenceRoute(profileId: Long? = null)` (null = active profile),
-  `HealthRoute(profileId?, testId?)`, `ProfilesRoute(createForCurrent)`, `ProfileDetailRoute(id)`.
-- **Gradle guards**: `verifyPermissions` (deny + allow list on the merged release manifest),
-  `verifyFeatureBoundaries` (Expressive/MaterialShapes APIs only in `:designsystem`; **run it alone**),
-  `verifyPureKotlin` for `:core:*`, and (M12) `verifyNoSensitiveLogging`, wired into `check`.
-  - `verifyNoSensitiveLogging` scans `src/main` for log/print calls that carry hearing data, names, addresses or
-    throwable messages.
+- **WHO grade almost always reads "Normal"** under the model (§17).
+  - Copy: use "estimated/approximate/may/consider".
+  - Never say "diagnose", "detected hearing loss" or "your hearing is damaged".
+  - Censored points read "beyond test range".
+- **Loudness matching** (`AbGainPlanner`):
+  - shared preamp `P_common = max(-15, -max(0,maxG) - 0.5)`;
+  - per option `inputGain = P_common − ΔL(G)`;
+  - the real mixer rate (`outputSampleRate()`).
+- **Transactions**: `:data` exposes `DataTransactions.withTransaction { }` (§28.3). The hearing-test save and the
+  preference save each use one transaction inside `NonCancellable`.
+- **Volume lock** (§28.1): if the output device at release differs from the start device, nothing is written. The
+  restore is deferred until the start device returns, and is skipped if the index was lowered externally.
+- **Preference re-entry** (§24.1): a profile with a saved preference test opens on FINE_TUNE. A fine-tune-only save
+  writes settings only (`saveSettings`), never a `PreferenceTest` row.
+- **Routes**:
+  - `HearingTestRoute(profileId: Long? = null)` (null = profile created at save time);
+  - `ResultsRoute(testId)`, whose "Test again" passes the test's profileId;
+  - `PreferenceRoute(profileId: Long? = null)` (null = active profile);
+  - `HealthRoute(profileId?, testId?)`, `ProfilesRoute(createForCurrent)`, `ProfileDetailRoute(id)`.
+- **Gradle guards**, all wired into root `check`:
+  - `verifyPermissions`: a deny and allow list on the merged release manifest.
+  - `verifyFeatureBoundaries`: Expressive/MaterialShapes APIs only in `:designsystem`. **Run it alone.**
+  - `verifyPureKotlin`: for `:core:*`.
+  - `verifyNoSensitiveLogging` (§29): an **allow list**. Log/print arguments after the tag may only be:
+    - string literals whose templates are limited to `javaClass.simpleName`, `::class.simpleName` or
+      `<chain>.UPPER_CASE.name`;
+    - numeric, char or boolean literals.
+
+    Anything else, including any throwable and `printStackTrace`, fails. There is no suppression. The scanner lives
+    in `build-logic/convention/src/main/kotlin/LoggingScanner.kt` with 82 unit tests, run in CI by
+    `./gradlew -p build-logic test`. It runs only in the root `check`, so run it after module checks.
 - **Release build** (M12):
-  - `:app:assembleRelease` runs R8 with resource shrinking; the keep rules are in `app/proguard-rules.pro`
-    (serialization, Room, Hilt).
+  - `:app:assembleRelease` runs R8 with resource shrinking; the keep rules are in `app/proguard-rules.pro`.
+  - The session-3 review checked the minified dex: all routes, serializers, `PAudioDatabase_Impl` and the Hilt VM
+    keys survive.
   - The APK is unsigned unless `-Ppaudio.signReleaseWithDebugKey=true` or `PAUDIO_SIGN_RELEASE_WITH_DEBUG_KEY=1` is
     set.
-- **License**: GPL-3.0-or-later (SPEC §10); NIN demo clips are CC BY-NC-SA 3.0 US → never monetize while they ship.
+- **Golden vectors**: `python3 tools/golden/gen_all.py --check` regenerates into a temp dir and diffs the committed
+  vectors with float tolerance; it exits 1 on any mismatch (`docs/VECTORS.md`).
+- **License**: GPL-3.0-or-later (SPEC §10). The NIN demo clips are CC BY-NC-SA 3.0 US, so never monetize while they
+  ship.
 
 ## 3. Remaining work (in order)
 
-1. Fix the M9a Opus findings in §1.2 (MUST-FIX first), then re-run `:feature:hearingtest:check`.
-   Then give M12 its Opus review: trap table (DECISIONS §26.3, 18 pinned / 1 device-only (13) / 1 gap (20)), keep
-   rules, the logging guard.
-   - **Trap 20 gap:** add a behavioural test in `:feature:hearingtest` that haptics and announcements fire only
-     after the stimulus is silent. Do it together with M9a MUST-FIX 4.
-   - **Also:** the preference top-bar back button is 40 dp (`PreferenceScreen.kt` ~165); make it 48 dp, as
-     Results/Health now are.
-   - **Also:** `:feature:hearingtest` has no a11y Compose test yet (pattern: `A11yAudit` in the other features).
-2. Run the whole `docs/HARDWARE_TEST.md` checklist on a phone; fill `docs/PLAYER_COMPAT.md`.
-3. Diff `LICENSE` against the canonical GPL-3.0 text.
-4. Clear the nits in §1.3 as time allows.
+1. Act on the round-2 review outcome (§1.2) if it requested changes.
+2. Run the whole `docs/HARDWARE_TEST.md` checklist on a phone and fill in `docs/PLAYER_COMPAT.md`. New items this
+   session cover Bluetooth haptic latency, the Quick no-cue screen, re-tap, abort while unplugged, Samsung mono and
+   preference re-entry.
+3. Optional polish from §1.3:
+   - the `lifecycle-process` dependency for the rotation gap;
+   - the "Fine-tune your sound" entry label;
+   - a sample-accurate Thorough period.
 
 ## 4. Orchestration recipe (how this was built)
 
-- **Roles.** One orchestrator session pins shared contracts, spawns implementers (Sonnet; Haiku/Sonnet for docs) in
-  isolated git worktrees, spawns independent read-only reviewers (**Opus** for correctness-critical modules: dsp,
-  audiometry, effect/P0, service, hearing-test flow, hardening; **Sonnet** otherwise), relays findings to the
-  *same* implementer via `SendMessage`, then merges (`git merge --no-ff worktree-agent-<id>`), runs the module
-  checks on the merged tree and pushes.
-- **Prompts** are self-contained: spec sections, exact directory scope, verify command, DECISIONS section number
-  to use (reserve numbers up front to avoid clashes), commit trailers, "report spec contradictions, don't silently
-  fix them". Ask reviewers explicitly for real-thread interleavings, inherited platform state and token leaks on
-  error paths: every P0 bug so far was found that way.
-- **Parallelism.** At most ~3 concurrent agents (4-CPU container, 5-hour usage window — hit twice). Each agent uses
-  `--max-workers=1`. Parallel agents get disjoint directories; `docs/PROGRESS.md`/`DECISIONS.md` are append-only, so
-  merge conflicts there are "keep both sides" (check the section numbering afterwards).
-- **When an agent hits the usage limit**, snapshot its worktree as a WIP commit and resume it later with
-  `SendMessage` (its context survives).
+- **Roles.** One orchestrator session works like this:
+  1. Pins shared contracts.
+  2. Spawns implementers in isolated git worktrees: Sonnet for contained work; Opus for P0/concurrency-critical
+     work such as the hearing-test session.
+  3. Spawns independent read-only reviewers: **Opus** for correctness-critical work (dsp, audiometry, effect/P0,
+     service, hearing-test flow, hardening); otherwise the orchestrator reviews the diff itself.
+  4. Relays findings to the *same* implementer via `SendMessage`, so its context survives.
+  5. Merges with `git merge --no-ff worktree-agent-<id>`, runs the checks on the merged tree, and pushes.
+- **Prompts** are self-contained:
+  - spec sections, exact directory scope, the verify command;
+  - a reserved DECISIONS section number;
+  - the commit trailers;
+  - "report spec contradictions, don't silently fix them".
+
+  Ask reviewers explicitly for real-thread interleavings, inherited platform state, token leaks on error paths, and
+  "would this test fail if the fix were reverted?" (have them probe it). Every P0 bug and every vacuous test so far
+  was found that way.
+- **Session-3 lessons:**
+  - **Worktree base:** an agent worktree can start at a very old commit. Tell every agent to
+    `git reset --hard <branch>` first and to verify its base.
+  - **SDK:** AGP may auto-install `build-tools;36.0.0` into the shared SDK. A half-extracted copy breaks every
+    build; check its file count before you blame code.
+  - **Memory:** the container OOM-killed a Gradle process with three builds running. Keep `--max-workers=1` per
+    agent, at most about 3 concurrent agents, and never two builds in one worktree.
+  - **Worker restart:** a worker restart kills running agents. Their transcripts survive, so resume each with
+    `SendMessage` and tell it to inspect its uncommitted diff first.
+  - **Cached checks:** a merged tree whose `check` comes back in under a minute is Gradle's build cache reusing
+    worktree results with identical inputs. That is valid, but force `--rerun` when you need real test counts.
+- **Parallelism.** Parallel agents get disjoint directories. `docs/PROGRESS.md` and `DECISIONS.md` are append-only,
+  so merge conflicts there are "keep both sides"; check the section numbering afterwards.
 
 ## 5. Environment setup for a fresh container
 
@@ -215,12 +185,13 @@ confirmed by the reviewer with throwaway probe tests (not committed).
 mkdir -p /opt/android-sdk/cmdline-tools && cd /tmp
 curl -sSfo clt.zip https://dl.google.com/android/repository/commandlinetools-linux-16111833_latest.zip
 unzip -q clt.zip -d /opt/android-sdk/cmdline-tools && mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest
-yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
+yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses   # sdkmanager now delegates to the new Android CLI; still works
 /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-37.1" "build-tools;37.0.0" "platform-tools"
 echo "sdk.dir=/opt/android-sdk" > local.properties   # also in every worktree
 pip install numpy scipy                               # golden oracles
 ./gradlew --max-workers=2 check assembleDebug
 ./gradlew --max-workers=2 verifyFeatureBoundaries     # alone
+./gradlew -p build-logic test                         # logging-scanner tests
+python3 tools/golden/gen_all.py --check               # golden vectors match
 ```
-Maven Central intermittently returns 429 behind the proxy: retry. Golden vectors:
-`python3 tools/golden/gen_all.py --out core` (see `docs/VECTORS.md`).
+Maven Central intermittently returns 429 behind the proxy: retry.

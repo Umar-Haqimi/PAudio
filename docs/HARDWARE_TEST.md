@@ -76,16 +76,20 @@ Run both Quick and Thorough on each earphone type.
 - [ ] **Phone call / audio focus loss.** Receive a call or start another app's playback mid-test. Expected: the test pauses; the system-wide EQ is restored when you leave the test.
 - [ ] **App backgrounded.** Switch apps mid-test. Expected: the test pauses; a pause longer than 5 minutes aborts the test and everything is restored. (DECISIONS §23)
 - [ ] **Pause reasons and resume copy.** Verify each pause message is understandable and resuming is always a deliberate tap.
-- [ ] **Environment warnings.** With mono audio on (including the Samsung `mono_audio` setting, which PAudio does not check), a non-zero audio balance, or spatial audio on: expected blocking warnings for the settings PAudio can read; **record whether the Samsung `mono_audio` setting is missed**. DND shows live status. (DECISIONS §6, PROGRESS M6)
+- [ ] **Environment warnings.** With mono audio on (AOSP `master_mono` and, on Samsung, `mono_audio`, which PAudio now reads; DECISIONS §28), a non-zero audio balance, or spatial audio on: expected blocking warnings for the settings PAudio can read; **on a Samsung device, confirm the One UI mono toggle is caught**. DND shows live status. (DECISIONS §6, PROGRESS M6)
 - [ ] **Noise meter.** Grant the microphone permission on the pre-test page; check Quiet / OK / Too noisy thresholds in a quiet room, with music, and with talking. Expected: the meter hides if the permission is denied and stops when you leave the page (the microphone indicator on screen goes off). Nothing is stored.
 - [ ] **TalkBack during the test.** With TalkBack on, run a test. Expected: stimuli are heard clearly through TalkBack speech; the "Heard"/"Not heard"/"Level saved" speech may overlap the next gap (400-1200 ms): record whether it interferes with the next tone. No announcements during a stimulus. (SPEC §2.2 #20, DECISIONS §23)
-- [ ] **Haptic timing (Thorough dial).** Turn the dial: a haptic tick fires only in a silent gap or after the response, never during a pulse. Check on a device with strong haptics.
+- [ ] **Haptic timing (Thorough dial).** Turn the dial: a haptic tick fires only in a silent gap or after the response, never during a pulse. Check on a device with strong haptics. (DECISIONS §27)
+- [ ] **Haptic/announcement timing on Bluetooth.** The "silent" flag follows the playback head and ignores the sink's own latency (100-300 ms on Bluetooth). On a Bluetooth headset, check by ear that the dial tick and the TalkBack acknowledgements do not land inside the next pulse. If they do, the fix is to delay the flag using `AudioTrack.getTimestamp`. (DECISIONS §27)
+- [ ] **No timing cue in Quick.** During a Quick test, nothing on screen changes when a tone starts: the hear button does not pulse and the wave does not move at onset. Calibration and Thorough still pulse. (SPEC "Morphing hear button", DECISIONS §27.1)
+- [ ] **Re-tap is not counted twice.** In Quick, tap "I heard it" and then tap again about 0.5-1 s later. Expected: the second tap does not answer the next trial (answers count only from 200 ms after a tone reaches the playback head). (DECISIONS §27.1)
 - [ ] **UI sounds off.** Tap the hear button and the answer buttons. Expected: no system click sound or vibration during stimulus playback.
 - [ ] **Thorough dial usability.** The dial works with a finger, with the Louder/Quieter buttons and with TalkBack custom actions, and shows no numbers.
 - [ ] **Timing.** Quick takes about 6-8 minutes and Thorough about 7-9 minutes including calibration and the channel check. Record the actual times. (DECISIONS §18, §23)
 - [ ] **Test-retest.** Two **Thorough** runs in the same session with the same headset. Expected: at least 90 % of points within +-10 dB. (SPEC §7.3, §9)
 - [ ] **Reliability prompt.** Answer "heard" at random in a Quick test. Expected: the guessing prompt appears (redo or keep) and the saved test is marked unreliable.
 - [ ] **Volume restore.** After completing, aborting or killing a test, the system volume is back at the original index (note: after process death mid-test the calibrated volume remains, a known gap).
+- [ ] **Abort while unplugged.** Unplug the headset mid-test and leave the test. Expected: the **speaker** volume is not changed; when the same headset type is plugged back in, its volume returns to the original index, unless it had been lowered during the test (then it is left lower). (DECISIONS §28.1)
 
 ## 6. Results, A/B and preference test
 
@@ -97,6 +101,7 @@ Run both Quick and Thorough on each earphone type.
 - [ ] **Bypass lifetime.** While Results or a preference round is on screen and the app goes to the background, the system-wide engine is restored; coming back re-creates a paused player. (DECISIONS §21, §24)
 - [ ] **Preference gate by ear.** Choose A/B is enabled only after about 2 s of **real audible** playback on each side. Check with a stopwatch that the gate opens after roughly 2 s per side and not earlier (`listenTicks` accuracy), also across focus loss and pausing.
 - [ ] **Preference rounds.** Complete a test: nine comparisons at most, "Can't tell" ends an axis, "Try another song" cycles clips and keeps the round; the final fine-tune sliders change the sound live; Save is reflected in the system-wide sound.
+- [ ] **Preference re-entry.** After saving a preference test, open it again from Home, Results and a Profile. Expected: it opens on the fine-tune screen with the saved sliders; "Redo the A/B test" restarts the comparisons; saving fine-tune changes only does not add a test to the history. (DECISIONS §24.1)
 - [ ] **Treble axis.** With the dark "34 Ghosts IV" clip, check whether the 8 kHz treble difference is audible at all; note whether "Can't tell" is the common outcome. (DECISIONS §12)
 - [ ] **System-wide engine during preference screens.** Shown as bypassed only while the A/B screen is on screen.
 
