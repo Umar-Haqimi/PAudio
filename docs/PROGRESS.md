@@ -240,3 +240,6 @@ Pending reviews: Opus re-verify of M7a P0 fixes; Sonnet review of M10. See `docs
 ## Session 3 — logging guard hardening (DECISIONS section 29)
 - `verifyNoSensitiveLogging` is now an allowlist (`LoggingScanner`: tokenising, constant text only, printStackTrace banned) with a JUnit suite in build-logic (`./gradlew -p build-logic test`, run in CI). The old denylist regex caught 1 of 14 reviewer probes.
 - DECISIONS 26.2 / 26.4 wording corrected; A11yAudit helper comment corrected (a default IconButton already has a 48 dp touch target; the strict node-size check stays).
+
+## Preference re-entry opens on the fine-tune (DECISIONS 24.1)
+- Re-entering the preference test for a profile that already has one now lands on the fine-tune screen (saved strength and gains, curves, audio only while STARTED); first-timers still get the intro. New "Redo the A/B test" action restarts the wizard. A fine-tune-only session saves just the profile settings (`PreferenceData.saveSettings`, one transaction) and never inserts a test row. Fine-tune song chips now 48 dp wide. Entry labels left static (would need plumbing in home/profiles).

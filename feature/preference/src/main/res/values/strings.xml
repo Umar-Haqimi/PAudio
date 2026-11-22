@@ -70,6 +70,7 @@
     <string name="preference_word_treble_less">softer treble</string>
     <string name="preference_word_treble_same">no change</string>
     <string name="preference_fine_tune">Fine-tune</string>
+    <string name="preference_redo">Redo the A/B test</string>
     <string name="preference_save">Save</string>
     <string name="preference_saving">Saving…</string>
     <string name="preference_save_error">Couldn\'t save. Please try again.</string>

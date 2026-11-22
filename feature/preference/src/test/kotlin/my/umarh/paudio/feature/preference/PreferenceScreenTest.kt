@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -15,6 +16,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
 import my.umarh.paudio.core.dsp.CurveBuilder
 import my.umarh.paudio.core.preference.AbSide
@@ -106,5 +108,22 @@ class PreferenceScreenTest {
         rule.onNodeWithText("Bass: +3 dB, more bass").assertExists()
         rule.onNodeWithText("Voices and instruments: −2.5 dB, voices and instruments set back").assertExists()
         rule.onNodeWithText("Treble: 0 dB, no change").assertExists()
+    }
+
+    @Test
+    fun fineTuneShowsTheRedoAction_withA48dpTarget() {
+        ui = PreferenceUiState(phase = PrefPhase.FINE_TUNE, gLeft = DoubleArray(240), gRight = DoubleArray(240))
+        var redo = 0
+        setContent(PreferenceActions(onBack = {}, onRedo = { redo++ }))
+        rule.onNodeWithTag(REDO_TAG).performScrollTo().assertIsDisplayed().assertHeightIsAtLeast(48.dp).performClick()
+        assertThat(redo).isEqualTo(1)
+        rule.onNodeWithText("Redo the A/B test").assertExists()
+    }
+
+    @Test
+    fun fineTuneClickableNodesAreLabelledAndAtLeast48dp() {
+        ui = PreferenceUiState(phase = PrefPhase.FINE_TUNE, gLeft = DoubleArray(240), gRight = DoubleArray(240))
+        setContent(PreferenceActions(onBack = {}))
+        rule.assertClickablesAreLabelledAndLargeEnough()
     }
 }

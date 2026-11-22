@@ -96,6 +96,9 @@ class PreferenceViewModel @Inject constructor(
     private val records = mutableListOf<RoundRecord>()
     private var startedAt = 0L
 
+    /** True once this session ran the A/B wizard ([begin]); false for a load straight into the fine-tune. */
+    private var ranRounds = false
+
     private var clipOverride: DemoClip? = null
     private var plan: PrefPlan? = null
     private var handle: PrefAudio? = null
@@ -121,7 +124,22 @@ class PreferenceViewModel @Inject constructor(
                 return
             }
             baseline = b
-            _ui.value = PreferenceUiState(phase = PrefPhase.INTRO, hasHearingTest = b.hasTest, strength = b.strength.toFloat())
+            if (b.hasPreferenceTest) {
+                // Re-entry: straight to the fine-tune, seeded with what the profile has saved.
+                _ui.value = PreferenceUiState(
+                    phase = PrefPhase.FINE_TUNE,
+                    hasHearingTest = b.hasTest,
+                    strength = b.strength.toFloat(),
+                    gB = b.gB.toFloat().coerceIn(FineTuneRange.of(PreferenceAxis.BASS).toFloatRange()),
+                    gP = b.gP.toFloat().coerceIn(FineTuneRange.of(PreferenceAxis.PRESENCE).toFloatRange()),
+                    gT = b.gT.toFloat().coerceIn(FineTuneRange.of(PreferenceAxis.TREBLE).toFloatRange()),
+                    personalized = true,
+                )
+                refreshCurve()
+                launchPrepare() // no-op until the screen is STARTED (P0)
+            } else {
+                _ui.value = PreferenceUiState(phase = PrefPhase.INTRO, hasHearingTest = b.hasTest, strength = b.strength.toFloat())
+            }
         } catch (ce: CancellationException) {
             throw ce
         } catch (_: Throwable) {
@@ -138,6 +156,7 @@ class PreferenceViewModel @Inject constructor(
         bisection = PreferenceBisection(data.random())
         records.clear()
         clipOverride = null
+        ranRounds = true
         startedAt = data.nowMs()
         beginRound()
     }
@@ -263,7 +282,10 @@ class PreferenceViewModel @Inject constructor(
 
     // ---- save --------------------------------------------------------------------------------------------------------
 
-    /** Persists the PreferenceTest (the bisection result + rounds) and the profile's strength / gB / gP / gT. */
+    /**
+     * Persists the PreferenceTest (the bisection result + rounds) and the profile's strength / gB / gP / gT; a session
+     * that only fine-tuned (no A/B rounds) persists just the profile settings.
+     */
     fun save() {
         val b = baseline ?: return
         val st = _ui.value
@@ -272,13 +294,18 @@ class PreferenceViewModel @Inject constructor(
         _ui.update { it.copy(saving = true, saveError = false) }
         viewModelScope.launch {
             try {
-                data.save(
-                    profileId = b.profileId,
-                    startedAt = startedAt,
-                    test = Triple(o.gB.toFloat(), o.gP.toFloat(), o.gT.toFloat()),
-                    roundsJson = Json.encodeToString(records.toList()),
-                    settings = ProfileSettings(st.strength, st.gB, st.gP, st.gT, b.personalizationOn),
-                )
+                val settings = ProfileSettings(st.strength, st.gB, st.gP, st.gT, b.personalizationOn)
+                if (ranRounds) {
+                    data.save(
+                        profileId = b.profileId,
+                        startedAt = startedAt,
+                        test = Triple(o.gB.toFloat(), o.gP.toFloat(), o.gT.toFloat()),
+                        roundsJson = Json.encodeToString(records.toList()),
+                        settings = settings,
+                    )
+                } else {
+                    data.saveSettings(b.profileId, settings) // fine-tune only: no rounds, no PreferenceTest row
+                }
                 releaseAudio()
                 _ui.update { it.copy(saving = false, saved = true) }
             } catch (ce: CancellationException) {
