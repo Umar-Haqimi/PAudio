@@ -17,6 +17,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -49,6 +51,7 @@ private class CountingHaptics : HapticFeedback {
 
 /** Second review round of M9a, UI side (DECISIONS §27.1). */
 @RunWith(AndroidJUnit4::class)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
 class ReviewRound2UiTest {
     @get:Rule
     val rule = createAndroidComposeRule<ComponentActivity>()
@@ -70,9 +73,13 @@ class ReviewRound2UiTest {
         }
         fun snapshot(): String {
             rule.waitForIdle()
+            rule.mainClock.advanceTimeBy(350) // mid-way through a pulse period, if anything pulsed
             rule.onNodeWithTag(Tags.HEAR).assertIsEnabled()
             rule.onNodeWithTag(Tags.DIDNT).assertIsEnabled()
-            return rule.onNodeWithTag(Tags.HEAR).printToString(maxDepth = 5) + "\n" +
+            // pixels of the hear button + the wave progress area, and the whole semantics tree
+            val img = rule.onNodeWithTag(Tags.HEAR).captureToImage().toPixelMap()
+            val pixels = buildString { for (y in 0 until img.height step 4) for (x in 0 until img.width step 4) append(img[x, y].hashCode()).append(',') }
+            return pixels + "\n" + rule.onNodeWithTag(Tags.HEAR).printToString(maxDepth = 5) + "\n" +
                 rule.onRoot().printToString(maxDepth = 50)
         }
         val before = snapshot()
